@@ -1,0 +1,162 @@
+.PHONY: help
+
+help::
+	$(ECHO) "Makefile Usage:"
+	$(ECHO) "  make all TARGET=<sw_emu/hw_emu/hw> DEVICE=<FPGA platform>"
+	$(ECHO) "      Generate the design for specified Target and Device."
+	$(ECHO) ""
+	$(ECHO) "  make clean "
+	$(ECHO) "      Remove the generated non-hardware files."
+	$(ECHO) ""
+	$(ECHO) "  make cleanall"
+	$(ECHO) "      Remove all the generated files."
+	$(ECHO) ""
+	$(ECHO) "  make check TARGET=<sw_emu/hw_emu/hw> DEVICE=<FPGA platform>"
+	$(ECHO) "      Run application in emulation."
+	$(ECHO) ""
+
+
+# Model configuration
+MODULUS            = 302934307671667531413257853548643485645
+HOST_FLAGS_HW_EMU  = -e -m $(MODULUS) -f 10
+HOST_FLAGS_FPGA    = -e -m $(MODULUS) -f 10
+
+# Synthesis directives
+#SRC_DIR=/data/examples/getting_started/rtl_kernel/rtl_vdf_newred
+LDCLFLAGS += --xp "vivado_prop:run.pfm_dynamic_vdf_1_0_synth_1.\
+                   {STEPS.SYNTH_DESIGN.ARGS.FANOUT_LIMIT}={400}"
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
+                   {STEPS.OPT_DESIGN.ARGS.DIRECTIVE}={Explore}"
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
+                   {STEPS.PLACE_DESIGN.ARGS.DIRECTIVE}={SSI_HighUtilSLRs}"
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
+                   {STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE}=\
+                   {AlternateFlowWithRetiming}"
+
+# Vivado 2018.3
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
+                   {STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE}={AggressiveExplore}"
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
+                   {STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE}=\
+                   {AggressiveExplore}"
+
+#LDCLFLAGS += --kernel_frequency 140
+LDCLFLAGS += --kernel_frequency 130
+
+
+# Points to Utility Directory
+COMMON_REPO        = $(AWS_FPGA_REPO_DIR)/SDAccel/examples/xilinx
+ABS_COMMON_REPO    = $(shell readlink -f $(COMMON_REPO))
+
+ROOT_DIR           = $(realpath ../../../..)
+MODSQR_DIR         = $(ROOT_DIR)/modular_square
+SCRIPTS_DIR        = ../tcl
+HOST_SRC_DIR       = $(ROOT_DIR)/msu/sw
+
+HOST_SRCS         += $(HOST_SRC_DIR)/MSUSDAccel.cpp
+HOST_SRCS         += $(HOST_SRC_DIR)/MSU.cpp
+HOST_SRCS         += $(HOST_SRC_DIR)/main.cpp
+
+CXXFLAGS          += -I$(HOST_SRC_DIR) -DFPGA=1
+
+TARGETS           := hw
+TARGET            := $(TARGETS)
+DEVICE            := $(AWS_PLATFORM)
+XCLBIN            := ./xclbin
+
+include ../utils.mk
+
+DSA               := $(call device2sandsa, $(DEVICE))
+BUILD_DIR         := /tmp/vdf_9cc/_x.$(TARGET).$(DSA)
+
+CXX               := $(XILINX_SDX)/bin/xcpp
+XOCC              := $(XILINX_SDX)/bin/xocc
+VIVADO            := vivado
+
+# Include Libraries
+include $(ABS_COMMON_REPO)/libs/opencl/opencl.mk
+include $(ABS_COMMON_REPO)/libs/xcl2/xcl2.mk
+CXXFLAGS          += $(xcl2_CXXFLAGS)
+LDFLAGS           += $(xcl2_LDFLAGS)
+HOST_SRCS         += $(xcl2_SRCS)
+
+CXXFLAGS          += $(opencl_CXXFLAGS) -Wall -O0 -std=c++14
+LDFLAGS           += $(opencl_LDFLAGS) -lgmp
+
+# Host compiler global settings
+CXXFLAGS          += -fmessage-length=0
+LDFLAGS           += -lrt -lstdc++ 
+
+# Kernel compiler global settings
+CLFLAGS           += -t $(TARGET) --platform $(DEVICE) 
+CLFLAGS           += --save-temps --temp_dir $(BUILD_DIR) 
+
+
+EXECUTABLE         = host
+
+EMCONFIG_DIR       = $(XCLBIN)/$(DSA)
+
+BINARY_CONTAINERS += $(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin
+BINARY_CONTAINER_vdf_OBJS += $(XCLBIN)/vdf.$(TARGET).$(DSA).xo
+
+CP = cp -rf
+
+.PHONY: all clean cleanall docs emconfig
+all: check-devices mem $(EXECUTABLE) $(BINARY_CONTAINERS) emconfig
+
+.PHONY: exe
+exe: $(EXECUTABLE)
+
+mem:
+	mkdir -p mem
+	cd mem && $(MODSQR_DIR)/rtl/gen_reduction_lut.py 
+
+$(XCLBIN)/vdf.$(TARGET).$(DSA).xo:
+	mkdir -p ${XCLBIN}
+	$(VIVADO) -mode batch -source $(SCRIPTS_DIR)/gen_xo.tcl \
+                  -tclargs $@ vdf hw $(DEVICE)
+
+
+# Building kernel
+$(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin: $(BINARY_CONTAINER_vdf_OBJS)
+	mkdir -p $(XCLBIN)
+	$(XOCC) $(CLFLAGS) $(LDCLFLAGS) \
+             -lo $(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin \
+             $(XCLBIN)/vdf.$(TARGET).$(DSA).xo
+
+# Building Host
+$(EXECUTABLE): $(HOST_SRCS) $(HOST_HDRS)
+	mkdir -p $(XCLBIN)
+	$(CXX) $(CXXFLAGS) $(HOST_SRCS) $(HOST_HDRS) -o '$@' $(LDFLAGS)
+
+emconfig:$(EMCONFIG_DIR)/emconfig.json
+$(EMCONFIG_DIR)/emconfig.json:
+	emconfigutil --platform $(DEVICE) --od $(EMCONFIG_DIR)
+
+check: all
+ifeq ($(TARGET),$(filter $(TARGET),sw_emu hw_emu))
+	$(CP) $(EMCONFIG_DIR)/emconfig.json .
+	XCL_EMULATION_MODE=$(TARGET) ./$(EXECUTABLE) $(HOST_FLAGS_HW_EMU)
+else
+	 ./$(EXECUTABLE) $(HOST_FLAGS_FPGA)
+endif
+
+ifneq ($(TARGET),$(findstring $(TARGET), hw hw_emu))
+$(warning WARNING:Application supports only hw hw_emu TARGET. \
+  Please use the target for running the application)
+endif
+
+
+# Cleaning stuff
+clean:
+	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*} 
+	-$(RMDIR) sdaccel_* TempConfig system_estimate.xtxt *.rpt
+	-$(RMDIR) src/*.ll _xocc_* .Xil emconfig.json 
+	-$(RMDIR) dltmp* xmltmp* *.log *.jou *.wcfg *.wdb
+	-$(RMDIR) mem
+
+cleanall: clean
+	-$(RMDIR) $(XCLBIN)
+	-$(RMDIR) _x.*
+	-$(RMDIR) ./tmp_kernel_pack* ./packaged_kernel* 
+	-$(RMDIR) mem

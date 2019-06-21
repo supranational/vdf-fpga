@@ -1,0 +1,321 @@
+################################################################################
+# Copyright 2019 Supranational LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
+################################################################################
+# Squaring
+################################################################################
+# Divide input polynomial (V) of NUM_ELEMENTS into NUM_SEGMENTS (e.g. 4)->(W0-3)
+#
+#        |---|----------------------------------|
+#        | R |                 V                |
+#        |---|----------------------------------|
+#                              |
+#                             \ /
+#        |---|----------------------------------|
+#        | R |   W3   |   W2   |   W1   |   W0  |
+#        |---|----------------------------------|
+#
+# R is the redundant extra elements that carry over from previous operations in
+#  order to lessen the burden of handling carries.  From now on the values of R
+#  will be considered part of W3 itself.
+
+# Each segment is comprised of the same number of elements except the highest
+#  order segment (e.g. W3).  That segment also contains the REDUNDANT_ELEMENTS.
+
+# Multiply seqments together.  
+# Since this is a square, each of the products with different factors will 
+#   be multiplied by two prior to summation.
+#
+#   |-----------------|-----------------|-----------------|-----------------|
+#   |      W3*W3      |      W2*W2      |      W1*W1      |      W0*W0      |
+#   |-----------------|-----------------|-----------------|-----------------|
+#            |-----------------|-----------------|-----------------|
+# x2         |      W3*W2      |      W2*W1      |      W1*W0      |
+#            |-----------------|-----------------|-----------------|
+#                     |-----------------|-----------------|
+# x2                  |      W3*W1      |      W2*W0      |
+#                     |-----------------|-----------------|
+#                              |-----------------|
+# x2                           |      W3*W0      |
+#                              |-----------------|
+#   +
+#   -------------------------------------------------------------------------
+#   |-----------------------------------------------------------------------|
+#   |                                  V*V                                  |
+#   |-----------------------------------------------------------------------|
+
+# Memory lookup table for reduction constants
+# Each element is split into two equal parts with a third part for extra bits.
+# For example with a WORD_LEN of 16 and BIT_LEN of 17, each element would be
+#  split into a low 8 bits, a high 8 bits, and an extra 1 bit.  The memory 
+#  table address would be 8 bits in this case (WORD_LEN / 2).  
+# Each memory address would store a value of size NONREDUNDANT_ELEMENTS * 
+#  WORD_LEN.  For a 128 NONREDUNDANT_ELEMENTS value with WORD_LEN 16, the
+#  memory contents would each hold a 2048 bit value.  
+# Once the memory contents are read, each value across all elements is summed
+#  with the running tally.  
+# Memory addresses hold unique values both inter and intra element.  Therefore
+#  each element requires 2^(WORD_LEN/2) number of entries.  There will be 
+#  SEGMENTS_ELEMENTS*2 + REDUNDANT_ELEMENTS number of distinct memories.
+
+# An example scenario with NUM_MULTIPLIERS = 2, and each multiply takes two
+#  cycles to complete. 
+#  There are two multiplications per cycle
+#  The multiplication pipeline starts with the high order words
+#  Each multiplication takes two cycles
+#     One for a base multiply using a set of small multipliers
+#     One to accumulate the results across all the small multipliers
+#  The results of the two multiplies are accumulated in the third cycle
+#  Intermediate results are left in redundant carry save form
+
+#############################################################################
+# Cycle 2
+#############################################################################
+#  Cycle   2  - Accumulate multiplier results
+# |---|-----------------|
+# |   |      W3*W3      |
+# |---|-----------------|
+#          |---|-----------------|
+#  x2      |   |      W3*W2      |
+#          |---|-----------------|
+#     +
+#     ----------------------------------------------------------------------
+# |---|--------|--------|--------|
+# |   |   V7   |   V6   |   V5*  |
+# |---|--------|--------|--------|
+
+#############################################################################
+# Cycle 3
+#############################################################################
+#  Cycle   3  - Accumulate multiplier results
+#                       |-----------------|
+#                       |      W2*W2      |
+#                       |-----------------|
+#                       |--------|
+#                       |   V5*  |
+#                       |--------|
+#                   |---|-----------------|
+#  x2               |   |      W3*W1      |
+#                   |---|-----------------|
+#     +
+#     ----------------------------------------------------------------------
+#                   |---|--------|--------|
+#                   |   |   V5   |   V4*  |
+#                   |---|--------|--------|
+
+#  Cycle   3  - Memory read of upper accumulated results
+#
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V7   |   V6   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#############################################################################
+# Cycle 4
+#############################################################################
+#  Cycle   4  - Accumulate multiplier results
+#                                |-----------------|
+#  x2                            |      W2*W1      |
+#                                |-----------------|
+#                                |--------|
+#                                |   V4*  |
+#                                |--------|
+#                            |---|-----------------|
+#  x2                        |   |      W3*W0      |
+#                            |---|-----------------|
+#     +
+#     ----------------------------------------------------------------------
+#                   |---|--------|--------|--------|
+#                   |   |   V5   |   V4   |   V3*  |
+#                   |---|--------|--------|--------|
+
+#  Cycle   4  - Memory read of lower accumulated results
+#
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V7   |   V6   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#  Cycle   4  - Accumulate upper accumulated results memory read outputs
+#                                  |-----------------------------------|
+#                                  |                                   |
+#                                  |-----------------------------------|
+#                                                   ... 
+#                                  |-----------------------------------|
+#     +                            |                                   |
+#                                  |-----------------------------------|
+#     ----------------------------------------------------------------------
+#                                  |-----------------------------------|
+#                                  |     Accumulation V7,V6 upper      |
+#                                  |-----------------------------------|
+#                                              
+
+#############################################################################
+# Cycle 5
+#############################################################################
+#  Cycle   5  - Accumulate multiplier results
+#                                         |-----------------|
+#                                         |      W1*W1      |
+#                                         |-----------------|
+#                                         |--------|
+#                                         |   V3*  |
+#                                         |--------|
+#                                         |-----------------|
+#  x2                                     |      W2*W0      |
+#                                         |-----------------|
+#     +
+#     ----------------------------------------------------------------------
+#                                     |---|--------|--------|
+#                                     |   |   V3   |   V2*  |
+#                                     |---|--------|--------|
+
+#  Cycle   5  - Memory read of extra accumulated results (CONDITIONAL on non-0)
+#
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V7   |   V6   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#  Cycle   5 or 6  - Memory read of upper accumulated results 
+#                    If V7/V6 extra bits are all 0, this is cycle 5
+# 
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V5   |   V4   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#  Cycle   5  - Accumulate lower accumulated results memory read outputs
+#                                  |-----------------------------------|
+#                                  |     Accumulation V7,V6 upper      |
+#                                  |-----------------------------------|
+
+#                                  |-----------------------------------|
+#                                  |                                   |
+#                                  |-----------------------------------|
+#                                                   ... 
+#                                  |-----------------------------------|
+#     +                            |                                   |
+#                                  |-----------------------------------|
+#     ----------------------------------------------------------------------
+#                                  |-----------------------------------|
+#                                  |   Accumulation V7,V6 upper/lower  |
+#                                  |-----------------------------------|
+#                                              
+
+#############################################################################
+# Cycle 6
+#############################################################################
+#  Cycle   6  - Accumulate multiplier results
+#                                                           |-----------------|
+#                                                           |      W0*W0      |
+#                                                           |-----------------|
+#                                                  |-----------------|
+#  x2                                              |      W1*W0      |
+#                                                  |-----------------|
+#                                                  |--------|
+#                                                  |   V2*  |
+#                                                  |--------|
+#     +
+#     ----------------------------------------------------------------------
+#                                     |---|--------|--------|--------|--------|
+#                                     |   |   V3   |   V2   |   V1   |   V0   |
+#                                     |---|--------|--------|--------|--------|
+
+#  Cycle   6 or 7  - Memory read of lower accumulated results 
+#                    Occurs the cycle after the upper read
+# 
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V5   |   V4   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#  Cycle   6  - Accumulate upper accumulated results memory read outputs
+#               Assuming the conditional was skipped, use V5,V4 upper here
+#
+#                                  |-----------------------------------|
+#                                  |   Accumulation V7,V6 upper/lower  |
+#                                  |-----------------------------------|
+#
+#                                  |-----------------------------------|
+#                                  |                                   |
+#                                  |-----------------------------------|
+#                                                   ... 
+#                                  |-----------------------------------|
+#     +                            |                                   |
+#                                  |-----------------------------------|
+#     ----------------------------------------------------------------------
+#                                  |-----------------------------------|
+#                                  |   Accumulation V7,V6, V5,V4 upper |
+#                                  |-----------------------------------|
+#                                              
+
+#############################################################################
+# Cycle 7
+#############################################################################
+#  Cycle   7 or 8 - Memory read of extra accumulated results (CONDITIONAL)
+#
+#                                  |-----------------------------------|
+#                                  |              ...                  |
+# |---|--------|--------|       |-----------------------------------|  |
+# |   |   V5   |   V4   |  -->  |                                   |  |
+# |---|--------|--------|       |       Memory Lookup Tables        |--|
+#                               |                                   |
+#                               |-----------------------------------|
+#
+
+#  Cycle   7  - Accumulate lower accumulated results memory read outputs
+#               Assuming the conditional was skipped, use V5,V4 lower here
+#               Accumulate with V3-V0 as well
+#                              |---|--------|--------|--------|--------|
+#                              |   |   V3   |   V2   |   V1   |   V0   |
+#                              |---|--------|--------|--------|--------|
+#
+#                                  |-----------------------------------|
+#                                  |   Accumulation V7,V6, V5,V4 upper |
+#                                  |-----------------------------------|
+#
+#                                  |-----------------------------------|
+#                                  |                                   |
+#                                  |-----------------------------------|
+#                                                   ... 
+#                                  |-----------------------------------|
+#     +                            |                                   |
+#                                  |-----------------------------------|
+#     ----------------------------------------------------------------------
+#                                  |-----------------------------------|
+#                                  |     Accumulation V7,V6, V5,V4     |
+#                                  |-----------------------------------|
+#                                              

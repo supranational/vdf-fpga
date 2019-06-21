@@ -1,0 +1,2 @@
+// This file typically lists flags required by a large project, e.g. include directories
++librescan +libext+.v+.sv+.vh+.svh -y . -y ./obj_dir/mem -y ../../primitives/rtl -y ../rtl -y ../../modular_square/rtl
