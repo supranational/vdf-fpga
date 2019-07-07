@@ -32,6 +32,12 @@
 //
 // *******************************************************************************/
 
+`include "msuconfig.vh"
+
+// MSU configuration
+`ifndef NONREDUNDANT_ELEMENTS_DEF
+ `define NONREDUNDANT_ELEMENTS_DEF 8
+`endif
 
 // default_nettype of none prevents implicit wire declaration.
 `default_nettype none
@@ -73,7 +79,8 @@ module vdf_kernel #(
   output wire                            ap_done ,
   input wire [C_M_AXI_ADDR_WIDTH-1:0]    ctrl_addr_offset_in,
   input wire [C_M_AXI_ADDR_WIDTH-1:0]    ctrl_addr_offset_out,
-  input wire [C_ADDER_BIT_WIDTH-1:0]     ctrl_constant
+  input wire [C_ADDER_BIT_WIDTH-1:0]     ctrl_constant,
+  input wire [32-1:0]                    input0
 );
 
 timeunit 1ps;
@@ -151,8 +158,9 @@ inst_axi_read_master (
 
 // Adder is combinatorial
 msu #(
-  .AXI_LEN            ( C_M_AXI_DATA_WIDTH ) ,
-  .C_XFER_SIZE_WIDTH  ( C_XFER_SIZE_WIDTH  )
+  .AXI_LEN               ( C_M_AXI_DATA_WIDTH         ) ,
+  .C_XFER_SIZE_WIDTH     ( C_XFER_SIZE_WIDTH          ) ,
+  .NONREDUNDANT_ELEMENTS ( `NONREDUNDANT_ELEMENTS_DEF )
 )
 msu  
 (
@@ -168,9 +176,10 @@ msu
  .m_axis_tdata  ( adder_tdata                  ) ,
  .m_axis_tkeep  (                              ) , // Not used
  .m_axis_tlast  (                              ) , // Not used
- .start_xfer    ( start_xfer                   ),
+ .start_xfer    ( start_xfer                   ) ,
  .ap_start      ( ap_start                     ) ,
- .ap_done       ( ap_done_core                 ),
+ .ap_done       ( ap_done_core                 ) ,
+ .reduction_we  ( input0[0]                    ) ,
  .m_axis_xfer_size_in_bytes(adder_out_xfer_size_in_bytes),
  .s_axis_xfer_size_in_bytes(adder_in_xfer_size_in_bytes)
 );
@@ -208,7 +217,8 @@ inst_axi_write_master (
   .s_axis_tdata            ( adder_tdata             )
 );
 
-   assign ap_done = write_done;
+   assign ap_done = ((adder_out_xfer_size_in_bytes == 0) ? ap_done_core :
+                     write_done);
 endmodule : vdf_kernel
 `default_nettype wire
 

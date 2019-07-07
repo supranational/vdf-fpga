@@ -24,6 +24,10 @@
 
 #define MSU_BYTES_PER_WORD    4
 #define MSU_WORD_LEN          (MSU_BYTES_PER_WORD*8)
+#define URAM_WIDTH            72
+#define NUM_URAMS             4
+#define EXTRA_ELEMENTS        2
+#define NUM_SEGMENTS          4
 
 // Use to define size of word on cpp side (1,2,4,8) depending on bit_len
 #define BN_BUFFER_SIZE        4  // top.sv BIT_LEN = 17-32
@@ -37,11 +41,20 @@ void bn_shr(mpz_t bn, int bits);
 void bn_init_mask(mpz_t mask, int bits);
 
 template <typename T>
-void bn_to_buffer(mpz_t bn, T *var, size_t words) {
+void bn_to_buffer(mpz_t bn, T *var, size_t words,
+                  bool suppress_warning = false,
+                  bool zero_extra_words = false) {
     size_t countp;
     mpz_export(var, &countp, -1, BN_BUFFER_SIZE, 0, BN_BUFFER_OFFSET, bn);
     if(countp != words) {
-        printf("WARNING: expected %ld words, got %ld\n", words, countp);
+        if(!suppress_warning) {
+            printf("WARNING: expected %ld words, got %ld\n", words, countp);
+        }
+        if(zero_extra_words) {
+            for(unsigned i = countp; i < words; i++) {
+                var[i] = 0;
+            }
+        }
     }
 }
 
@@ -52,11 +65,19 @@ void bn_from_buffer(mpz_t bn, T *var, size_t words) {
 
 
 class MSUDevice {
+protected:
+    bool quiet;
 public:
     virtual ~MSUDevice() {}
     virtual void init(int msu_words_in, int msu_words_out) {}
     virtual void reset() {}
+    virtual void clock_cycle() {}
+    virtual void reduction_we(bool enable) = 0;
+    virtual void reduction_write(mpz_t msu_in, int reduction_words_in) = 0;
     virtual void compute_job(mpz_t msu_out, mpz_t msu_in) = 0;
+    virtual void set_quiet(bool _quiet) {
+        quiet = _quiet;
+    }
 };
 
 
@@ -70,6 +91,12 @@ public:
     int nonredundant_elements;
     mpz_t modulus;
 
+    int num_urams;
+    uint64_t reduction_rows_per_table;
+    uint64_t reduction_rows;
+    uint64_t reduction_xfers_per_row;
+    uint64_t reduction_xfers;
+    
     int num_elements;
     int msu_words_in;
     int msu_words_out;
@@ -81,14 +108,24 @@ public:
     mpz_t msu_in;
     mpz_t msu_out;
 
+    uint64_t t_final_out;
+    mpz_t reduced_out;
+    uint64_t compute_time;
+
+    bool quiet;
+
     MSUDevice &device;
     
     MSU(MSUDevice &_d, int word_len,
-        int redundant_elements, int nonredundant_elements, mpz_t _modulus);
+        int redundant_elements, int nonredundant_elements,
+        int num_urams, mpz_t _modulus);
     virtual ~MSU();
 
-    int  run_fixed(uint64_t t_start, uint64_t t_final, mpz_t sq_in);
-    int  run_random(uint64_t t_start, uint64_t t_final, bool rrandom);
+    void load_reduction_tables(const char *path);
+    int  run_fixed(uint64_t t_start, uint64_t t_final, mpz_t sq_in, 
+                   bool check);
+    int  run_random(uint64_t t_start, uint64_t t_final, bool rrandom, 
+                    bool check);
     void prepare_random_job(bool rrandom);
     void compute_job();
     int  check_job();    
@@ -96,5 +133,9 @@ public:
     void unpack_from_msu(mpz_t product, uint64_t *t_final, mpz_t msu_out);
     void compute_expected(mpz_t expected);
     void reduce_polynomial(mpz_t result, mpz_t poly, int padded_word_len);
+
+    void set_quiet(bool _quiet) {
+        quiet = _quiet;
+    }
 };
 #endif

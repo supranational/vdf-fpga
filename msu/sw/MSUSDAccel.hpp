@@ -25,6 +25,8 @@
 
 class OpenCLContext {
 public:
+    bool quiet;
+
     // Host memory for buffers
     std::vector<uint32_t,aligned_allocator<uint32_t>> input_buf;
     std::vector<uint32_t,aligned_allocator<uint32_t>> output_buf;
@@ -42,8 +44,10 @@ public:
     std::vector<cl::Memory> outBufferVec;
 
     OpenCLContext() {}
-    ~OpenCLContext() {}
+    ~OpenCLContext();
     void init(int msu_words_in, int msu_words_out);
+    void reduction_we(bool enable);
+    void reduction_write(mpz_t msu_in, int reduction_words_in);
     void compute_job(mpz_t msu_out, mpz_t msu_in);
 };
 
@@ -54,7 +58,14 @@ public:
     virtual ~MSUSDAccel() {}
     
     virtual void init(int msu_words_in, int msu_words_out);
+    virtual void reduction_we(bool enable);
+    virtual void reduction_write(mpz_t msu_in, int reduction_words_in);
     virtual void compute_job(mpz_t msu_out, mpz_t msu_in);
+
+    virtual void set_quiet(bool _quiet) {
+        quiet     = _quiet;
+        ocl.quiet = _quiet;
+    }
 };
 
 #endif

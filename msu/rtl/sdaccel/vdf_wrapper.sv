@@ -32,7 +32,6 @@
 //
 // *******************************************************************************/
 
-
 // default_nettype of none prevents implicit wire declaration.
 `default_nettype none
 module vdf_wrapper #(
@@ -175,7 +174,8 @@ inst_kernel (
   .m_axi_rvalid            ( m00_axi_rvalid          ),
   .m_axi_rready            ( m00_axi_rready          ),
   .m_axi_rdata             ( m00_axi_rdata           ),
-  .m_axi_rlast             ( m00_axi_rlast           )
+  .m_axi_rlast             ( m00_axi_rlast           ),
+  .input0                  ( input0                  )
 );
 
 

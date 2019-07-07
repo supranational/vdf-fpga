@@ -19,12 +19,20 @@
 #include <stdio.h>
 #include <MSU.hpp>
 
-#ifdef FPGA
+#if defined(FPGA) || defined(SDX_PLATFORM)
 #include <MSUSDAccel.hpp>
 #else
 #include <verilated.h>
 #include <MSUVerilator.hpp>
 #endif
+
+#ifndef NONREDUNDANT_ELEMENTS
+#define NONREDUNDANT_ELEMENTS 8
+#endif
+#ifndef MODULUS
+#define MODULUS "302934307671667531413257853548643485645"
+#endif
+
 
 void print_usage() {
     printf("Usage: host [1e] -m modulus\n");
@@ -32,12 +40,16 @@ void print_usage() {
     printf("Options:\n");
     printf("  -1       Use libgmp rrandom (default urandom)\n");
     printf("  -e       Enable hw emulation mode\n");
-    printf("  -i num   Set the number of tests to run\n");
+    printf("  -q       Quiet\n");
+    printf("  -i num   Set the number of test iterations to run\n");
     printf("  -f num   Set t_final\n");
+    printf("  -t num   Number of modsqr iterations per intermediate value\n");
     printf("  -w num   Set word length, in bits (default 16)\n");
     printf("  -r num   Set the number of redundant elements\n");
     printf("  -n num   Set the number of nonredundant elements\n");
+    printf("  -u num   Set the number of urams\n");
     printf("  -s 0xnum Set the the starting sq_in (default random)\n");
+    printf("  -d path  Path to reduction table .dat files\n");
     printf("\n");
     exit(0);
 }
@@ -47,15 +59,21 @@ int main(int argc, char** argv, char** env) {
     mpz_t modulus, sq_in;
     mpz_inits(modulus, sq_in, NULL);
 
-    int iterations            = 2;
-    uint64_t t_final          = 1;
-    int word_len              = 16;
-    int redundant_elements    = 2;
-    int nonredundant_elements = 8;
-    bool rrandom              = false;
-    bool hw_emu               = false;
+    mpz_set_str(modulus, MODULUS, 10);
+
+    int test_iterations         = 1;
+    uint64_t t_final            = 1;
+    uint64_t intermediate_iters = 0;
+    int word_len                = 16;
+    int redundant_elements      = 2;
+    int nonredundant_elements   = NONREDUNDANT_ELEMENTS;
+    int num_urams               = 0;
+    bool rrandom                = false;
+    bool hw_emu                 = false;
+    bool quiet                  = false;
+    const char *reduction_table_path = "./mem";
     int opt;
-    while((opt = getopt(argc, argv, "h1i:f:m:s:w:r:n:e")) != -1) {
+    while((opt = getopt(argc, argv, "h1qi:f:t:m:s:w:r:n:u:d:e")) != -1) {
         switch(opt) {
         case 'h':
             print_usage();
@@ -66,11 +84,17 @@ int main(int argc, char** argv, char** env) {
         case 'e':
             hw_emu = true;
             break;
+        case 'q':
+            quiet = true;
+            break;
         case 'i':
-            iterations = atoi(optarg);
+            test_iterations = atoi(optarg);
             break;
         case 'f':
-            t_final = atoi(optarg);
+            t_final = atol(optarg);
+            break;
+        case 't':
+            intermediate_iters = atol(optarg);
             break;
         case 'w':
             word_len = atoi(optarg);
@@ -80,6 +104,12 @@ int main(int argc, char** argv, char** env) {
             break;
         case 'n':
             nonredundant_elements = atoi(optarg);
+            break;
+        case 'u':
+            num_urams = atoi(optarg);
+            break;
+        case 'd':
+            reduction_table_path = optarg;
             break;
         case 's':
             if(mpz_set_str(sq_in, optarg+2, 16) != 0) {
@@ -107,31 +137,61 @@ int main(int argc, char** argv, char** env) {
         printf("Enabling hardware emulation mode\n");
     }
     
-#ifdef FPGA
+#if defined(FPGA) || defined(SDX_PLATFORM)
     MSUSDAccel   device;
 #else
     MSUVerilator device(argc, argv);
 #endif
     MSU msu(device, word_len,
-            redundant_elements, nonredundant_elements, modulus);
+            redundant_elements, nonredundant_elements,
+            num_urams, modulus);
+    msu.set_quiet(quiet);
+    device.set_quiet(quiet);
 
     device.reset();
 
+    msu.load_reduction_tables(reduction_table_path);
+
+
+    if(intermediate_iters == 0) {
+        intermediate_iters = t_final;
+    }
+
     int failures = 0;
     uint64_t t_start = 0;
-    for(int i = 0; i < iterations; i++) {
-        if(mpz_cmp_ui(sq_in, 0) != 0) {
-            failures += msu.run_fixed(t_start, t_final, sq_in);
-        } else {
-            failures += msu.run_random(t_start, t_final, rrandom);
-        }
-        printf("\n");
-        if(failures > 0) {
-            return(failures);
+    for(int test = 0; test < test_iterations; test++) {
+        uint64_t iter = 0; 
+        while(iter < t_final) {
+            uint64_t run_t_final = intermediate_iters;
+            if(run_t_final + iter > t_final) {
+                run_t_final = t_final - iter;
+            }
+
+            if(mpz_cmp_ui(sq_in, 0) != 0) {
+                failures += msu.run_fixed(t_start, run_t_final, 
+                                          sq_in, hw_emu);
+            } else {
+                failures += msu.run_random(t_start, run_t_final, 
+                                           rrandom, hw_emu);
+            }
+
+            iter += intermediate_iters;
+            mpz_set(sq_in, msu.reduced_out);
+
+            printf("\n");
+            if(failures > 0) {
+                return(failures);
+            }
+            if(!hw_emu) {
+                double ns_per_iter = ((double)msu.compute_time / 
+                                      (double)run_t_final);
+                gmp_printf("%lu %0.1lf ns/sq: %Zd\n", iter, ns_per_iter,
+                           msu.reduced_out);
+            }
         }
     }
-    if(failures == 0) {
-        printf("\nPASSED %ld iterations\n", iterations*(t_final-t_start));
+    if(failures == 0 && hw_emu) {
+        printf("\nPASSED %ld iterations\n", test_iterations*(t_final-t_start));
     }
 
     return(failures);

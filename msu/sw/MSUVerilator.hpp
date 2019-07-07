@@ -42,13 +42,15 @@ public:
     MSUVerilator(int argc, char** argv);
     virtual ~MSUVerilator();
     
-    virtual void reset();
     virtual void init(int _msu_words_in, int _msu_words_out) {
         msu_words_in = _msu_words_in;
         msu_words_out = _msu_words_out;
     }
+    virtual void reset();
+    virtual void clock_cycle();
+    virtual void reduction_we(bool enable);
+    virtual void reduction_write(mpz_t msu_in, int reduction_words_in);
     virtual void compute_job(mpz_t msu_out, mpz_t msu_in);
-    void clock_cycle();
 };
 
 #endif

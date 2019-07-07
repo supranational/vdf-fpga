@@ -79,18 +79,73 @@ MSUVerilator::~MSUVerilator() {
 
 void MSUVerilator::reset() {
     // Reset the device
-    tb->reset = 1;
-    tb->clk   = 1;
-    tb->start = 0;
-    clock_cycle();
+    tb->reset           = 1;
+    tb->clk             = 1;
+    tb->start           = 0;
+    tb->reduction_we    = 0;
+    tb->msu_in_valid    = 0;
+
+    for(int i = 0; i < 10; i++) {
+        clock_cycle();
+    }
 
     // Out of reset
-    tb->reset = 0;
+    tb->reset           = 0;
     clock_cycle();
     clock_cycle();
     clock_cycle();
 }
-    
+
+void MSUVerilator::reduction_we(bool enable) {
+    tb->reduction_we  = enable;
+    clock_cycle();
+}
+
+// Write one row of BRAM reduction table data into the MSU.
+void MSUVerilator::reduction_write(mpz_t msu_in, int reduction_words_in) {
+    uint64_t cycle_count_max = 1000;
+    uint64_t cycle_count = 0;
+
+    // Dont' run forever if something goes wrong
+    while(!tb->reduction_ready && cycle_count < cycle_count_max) {
+        clock_cycle();
+        cycle_count++;
+    }
+    if(cycle_count == cycle_count_max) {
+        printf("ERROR: Hit cycle count limit in reduction_write step 1\n");
+#if VM_TRACE
+        if (tfp) { tfp->close(); tfp = NULL; }
+#endif
+        exit(0);
+    }
+
+    // Send ap_start
+    tb->start     = 1;
+    clock_cycle();
+    tb->start     = 0;
+
+    // Send in the data
+    bn_to_buffer(msu_in, tb->msu_in, msu_words_in, true, true);
+    tb->msu_in_valid = 1;
+    clock_cycle();
+    tb->msu_in_valid = 0;
+    clock_cycle();
+
+    // Wait for it to be processed
+    cycle_count = 0;
+    while(!tb->reduction_ready && cycle_count < cycle_count_max) {
+        clock_cycle();
+        cycle_count++;
+    }
+    if(cycle_count == cycle_count_max) {
+        printf("ERROR: Hit cycle count limit in reduction_write step 2\n");
+#if VM_TRACE
+        if (tfp) { tfp->close(); tfp = NULL; }
+#endif
+        exit(0);
+    }
+}
+
 void MSUVerilator::compute_job(mpz_t msu_out, mpz_t msu_in) {
     //gmp_printf("msu_in is 0x%Zx\n", msu_in);
     for(int i = 0; i < msu_words_in; i++) {
@@ -102,12 +157,25 @@ void MSUVerilator::compute_job(mpz_t msu_out, mpz_t msu_in) {
     tb->start     = 1;
     clock_cycle();
     tb->start     = 0;
-        
+    tb->msu_in_valid = 1;
+    clock_cycle();
+    tb->msu_in_valid = 0;
+    
     // Clock until result is valid
-    int cycle_count = 0;
-    while(!tb->valid && cycle_count < 1000) {
+    uint64_t cycle_count_max = 100000;
+    uint64_t cycle_count = 0;
+
+    // Dont' run forever if something goes wrong
+    while(!tb->valid && cycle_count < cycle_count_max) {
         clock_cycle();
         cycle_count++;
+    }
+    if(cycle_count == cycle_count_max) {
+        printf("ERROR: Hit cycle count limit in compute_job\n");
+#if VM_TRACE
+        if (tfp) { tfp->close(); tfp = NULL; }
+#endif
+        exit(0);
     }
         
     bn_from_buffer(msu_out, tb->msu_out, msu_words_out);

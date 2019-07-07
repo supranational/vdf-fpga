@@ -39,8 +39,11 @@ module msu_tb
     input logic                reset,
     input logic                start,
     input logic [AXI_LEN-1:0]  msu_in[MSU_IN_XFERS],
+    input                      msu_in_valid,
     output logic [AXI_LEN-1:0] msu_out[MSU_OUT_XFERS],
-    output logic               valid
+    output logic               valid,
+    input                      reduction_we,
+    output                     reduction_ready
     );
 
    localparam int              C_XFER_SIZE_WIDTH  = 32;
@@ -58,6 +61,7 @@ module msu_tb
    // TB->MSU AXI interface.
    logic                         s_axis_tvalid;
    logic                         s_axis_tready;
+   logic                         s_axis_tlast;
    logic [AXI_LEN-1:0]           s_axis_tdata;
    logic [C_XFER_SIZE_WIDTH-1:0] s_axis_xfer_size_in_bytes;
     
@@ -68,7 +72,7 @@ module msu_tb
    logic [C_XFER_SIZE_WIDTH-1:0] m_axis_xfer_size_in_bytes;
    logic                         start_xfer;                         
    logic                         ap_start;
-
+   logic                         ap_done;
 
    typedef enum {
       INIT_S,             // 0
@@ -96,49 +100,58 @@ module msu_tb
    end
 
    always_comb begin
+      // By default keep the same state
+      next_state                = state;
+
       if(reset) begin
-         next_state          = INIT_S;
+         next_state             = INIT_S;
       end else begin
          case(state)
            INIT_S:
-             next_state      = AWAIT_TB_S;
+             next_state         = AWAIT_TB_S;
 
            AWAIT_TB_S:
              if(start) begin
-                next_state   = RECV_FROM_TB_S;
-             end else begin
-                next_state   = AWAIT_TB_S;
+                next_state      = RECV_FROM_TB_S;
              end
 
            RECV_FROM_TB_S:
-             next_state      = SEND_TO_MSU_S;
+             if(msu_in_valid) begin
+                next_state      = SEND_TO_MSU_S;
+             end
 
            SEND_TO_MSU_S:
-             if(remaining_bytes_to_msu > 0) begin
-                next_state   = SEND_TO_MSU_S;
+             if(reduction_we) begin
+                if(remaining_bytes_to_msu == 0) begin
+                   next_state   = AWAIT_MSU_S;
+                end
              end else begin
-                next_state   = AWAIT_MSU_S;
+                if(remaining_bytes_to_msu == 0) begin
+                   next_state   = AWAIT_MSU_S;
+                end
              end
 
            AWAIT_MSU_S:
-             if(start_xfer) begin
-                next_state   = RECV_FROM_MSU_S;
+             if(reduction_we) begin
+                if(ap_done) begin
+                   next_state   = AWAIT_TB_S;
+                end
              end else begin
-                next_state   = AWAIT_MSU_S;
+                if(start_xfer) begin
+                   next_state   = RECV_FROM_MSU_S;
+                end
              end
 
            RECV_FROM_MSU_S:
-             if(remaining_bytes_from_msu > 0) begin
-                next_state   = RECV_FROM_MSU_S;
-             end else begin
-                next_state   = SEND_TO_TB_S;
+             if(remaining_bytes_from_msu == 0) begin
+                next_state      = SEND_TO_TB_S;
              end
 
            SEND_TO_TB_S:
-                next_state   = INIT_S;
+             next_state         = INIT_S;
 
            default:
-             next_state      = INIT_S;
+             next_state         = INIT_S;
 
            endcase           
       end
@@ -148,25 +161,36 @@ module msu_tb
    // Transfer data to the MSU
    //////////////////////////////////////////////////////////////////////
    always @(posedge clk) begin
-      s_axis_tvalid         <= 0;
-      s_axis_tdata          <= 0;
       case(state)
         AWAIT_TB_S: begin
-           index_to_msu     <= 0;
-           if(s_axis_xfer_size_in_bytes != MSU_IN_XFERS*AXI_BYTES_PER_XFER)
+           index_to_msu              <= 0;
+           remaining_bytes_to_msu    <= 0;
+           if(s_axis_xfer_size_in_bytes != MSU_IN_XFERS*AXI_BYTES_PER_XFER &&
+              !reduction_we)
              $display("WARNING: inconsistent MSU data in xfer sizes");
         end
-        SEND_TO_MSU_S:
-          if(remaining_bytes_to_msu > 0 && s_axis_tready) begin
-             index_to_msu   <= index_to_msu + 1;
-             s_axis_tvalid  <= 1;
-             s_axis_tdata   <= msu_in[index_to_msu];
-          end
+        RECV_FROM_TB_S: begin
+           if(msu_in_valid) begin
+              index_to_msu           <= 0;
+              remaining_bytes_to_msu <= s_axis_xfer_size_in_bytes;
+           end
+        end
+        SEND_TO_MSU_S: begin
+           if(remaining_bytes_to_msu > 0 && s_axis_tready) begin
+              index_to_msu           <= index_to_msu + 1;
+              remaining_bytes_to_msu <= (remaining_bytes_to_msu - 
+                                         AXI_BYTES_PER_XFER);
+           end
+        end
       endcase
    end
-   assign ap_start               = state == AWAIT_TB_S;
-   assign remaining_bytes_to_msu = (s_axis_xfer_size_in_bytes - 
-                                    index_to_msu * AXI_BYTES_PER_XFER);
+   assign ap_start         = start;
+   assign reduction_ready  = (reduction_we && 
+                              (state == RECV_FROM_TB_S || state == AWAIT_TB_S));
+   assign s_axis_tlast     = (remaining_bytes_to_msu == AXI_BYTES_PER_XFER);
+   assign s_axis_tdata     = msu_in[index_to_msu];
+   assign s_axis_tvalid    = (state == SEND_TO_MSU_S &&
+                              remaining_bytes_to_msu > 0 && s_axis_tready);
 
    //////////////////////////////////////////////////////////////////////
    // Receive data from the MSU
@@ -175,7 +199,8 @@ module msu_tb
       m_axis_tready                   <= 0;
       case(state)
         AWAIT_MSU_S: begin
-           if(m_axis_xfer_size_in_bytes != MSU_OUT_XFERS*AXI_BYTES_PER_XFER)
+           if(m_axis_xfer_size_in_bytes != MSU_OUT_XFERS*AXI_BYTES_PER_XFER &&
+              !reduction_we)
              $display("WARNING: inconsistent MSU data out xfer sizes");
            index_from_msu             <= 0;
            m_axis_tready              <= 1;
@@ -208,7 +233,7 @@ module msu_tb
          .clk                         (clk),
          .reset                       (reset),
          .ap_start                    (ap_start),
-         .ap_done                     (),
+         .ap_done                     (ap_done),
          // MSU->TB
          .m_axis_tready               (m_axis_tready),
          .m_axis_tvalid               (m_axis_tvalid),
@@ -217,13 +242,14 @@ module msu_tb
          .m_axis_tlast                (),
          .m_axis_xfer_size_in_bytes   (m_axis_xfer_size_in_bytes),
          .start_xfer                  (start_xfer),
-         // TB->MSUg
+         // TB->MSU
          .s_axis_tready               (s_axis_tready),
          .s_axis_tvalid               (s_axis_tvalid),
          .s_axis_xfer_size_in_bytes   (s_axis_xfer_size_in_bytes),
          .s_axis_tdata                (s_axis_tdata[AXI_LEN-1:0]),
          .s_axis_tkeep                (),
-         .s_axis_tlast                ()
+         .s_axis_tlast                (s_axis_tlast),
+         .reduction_we                (reduction_we)
          );
    /* verilator lint_on PINCONNECTEMPTY */
 endmodule

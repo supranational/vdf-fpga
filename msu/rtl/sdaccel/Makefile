@@ -16,15 +16,25 @@
 
 OBJ=obj
 
-# This will build the simulation model plus the host but to rebuild the RTL
+# Build the simulation model plus the host. To rebuild the RTL
 # after making changes you must 'make clean' first.
 hw_emu:
 	mkdir -p $(OBJ)
 	time $(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw_emu check
 
+# Build the host software
+host: 
+	$(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw host
+
+# Build an FPGA model
 hw:
 	mkdir -p $(OBJ)
 	time $(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw all
+
+# Gather the sources needed for sdx for interactive hw emulation debug
+sdx:
+	mkdir -p $(OBJ)
+	$(MAKE) -C $(OBJ) -f ../Makefile.sdaccel sdx
 
 clean:
 ifdef XILINX_SDX

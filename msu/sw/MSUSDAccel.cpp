@@ -17,7 +17,6 @@
 #include <gmp.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <sys/time.h>
 #include <MSUSDAccel.hpp>
 
 using namespace std;
@@ -40,22 +39,6 @@ void print_buffer_concise(const char *name, uint32_t *buffer, int size) {
         printf("%05x", buffer[size - i - 1]);
     }
     printf("\n");
-}
-
-// Start a nanosecond-resolution timer
-struct timespec timer_start(){
-    struct timespec start_time;
-    clock_gettime(CLOCK_REALTIME, &start_time);
-    return start_time;
-}
-
-// End a timer, returning nanoseconds elapsed as a long
-long timer_end(struct timespec start_time){
-    struct timespec end_time;
-    clock_gettime(CLOCK_REALTIME, &end_time);
-    long diffInNanos = (end_time.tv_sec - start_time.tv_sec) *
-        (long)1e9 + (end_time.tv_nsec - start_time.tv_nsec);
-    return diffInNanos;
 }
 
 void OpenCLContext::init(int _msu_words_in, int _msu_words_out) {
@@ -118,10 +101,19 @@ void OpenCLContext::init(int _msu_words_in, int _msu_words_out) {
     OCL_CHECK(err, err = krnl_vdf->setArg(3, *outBuffer));
 }
 
+OpenCLContext::~OpenCLContext() {
+    delete outBuffer;
+    delete inBuffer;
+    delete krnl_vdf;
+    delete program;
+}
+
 void OpenCLContext::compute_job(mpz_t msu_out, mpz_t msu_in) {
-    gmp_printf("msu_in is 0x%Zx\n", msu_in);
-    bn_to_buffer(msu_in, input_buf.data(), msu_words_in);
-    print_buffer_concise("msu_in", input_buf.data(), msu_words_in);
+    if(!quiet) {
+        gmp_printf("msu_in is 0x%Zx\n", msu_in);
+    }
+    bn_to_buffer(msu_in, input_buf.data(), msu_words_in, true, true);
+    //print_buffer_concise("msu_in", input_buf.data(), msu_words_in);
     
     cl_int err;
     
@@ -139,12 +131,66 @@ void OpenCLContext::compute_job(mpz_t msu_out, mpz_t msu_in) {
 
     // Extract the result
     bn_from_buffer(msu_out, output_buf.data(), msu_words_out);
-    gmp_printf("msu_out is 0x%Zx\n", msu_out);
-    print_buffer_concise("msu_out", output_buf.data(), msu_words_out);
+    if(!quiet) {
+        gmp_printf("msu_out is 0x%Zx\n", msu_out);
+        //print_buffer_concise("msu_out", output_buf.data(), msu_words_out);
+    }
 }
+
+void OpenCLContext::reduction_we(bool enable) {
+    cl_int err;
+    OCL_CHECK(err, err = krnl_vdf->setArg(0, (uint32_t)enable));
+
+    // Launch the Kernel
+    //OCL_CHECK(err, err = q->enqueueTask(*krnl_vdf));
+
+    //printf("Calling finish on set arg...\n");
+    //OCL_CHECK(err, err = q->finish());
+    //printf("finished set arg...\n");
+
+}
+
+void OpenCLContext::reduction_write(mpz_t msu_in, int reduction_words_in) {
+    if(!quiet) {
+        gmp_printf("reduction write msu_in is 0x%Zx\n", msu_in);
+    }
+    bn_to_buffer(msu_in, input_buf.data(), msu_words_in, true, true);
+    //print_buffer_concise("reduction write msu_in", 
+    //input_buf.data(), msu_words_in);
+    
+    cl_int err;
+    
+    // DMA the buffers to the FPGA
+    OCL_CHECK(err, err = q->enqueueMigrateMemObjects(inBufferVec, 0));
+
+    // Launch the Kernel
+    OCL_CHECK(err, err = q->enqueueTask(*krnl_vdf));
+
+    // DMA the results from FPGA to host
+    OCL_CHECK(err, err =
+              q->enqueueMigrateMemObjects(outBufferVec,
+                                          CL_MIGRATE_MEM_OBJECT_HOST));
+    //printf("Calling finish...\n");
+    OCL_CHECK(err, err = q->finish());
+    //printf("finished...\n");
+
+    // Extract the result
+    // bn_from_buffer(msu_out, output_buf.data(), msu_words_out);
+    // gmp_printf("msu_out is 0x%Zx\n", msu_out);
+    // print_buffer_concise("msu_out", output_buf.data(), msu_words_out);
+}
+
 
 void MSUSDAccel::init(int msu_words_in, int msu_words_out) {
     ocl.init(msu_words_in, msu_words_out);
+}
+
+void MSUSDAccel::reduction_we(bool enable) {
+    ocl.reduction_we(enable);
+}
+
+void MSUSDAccel::reduction_write(mpz_t msu_in, int reduction_words_in) {
+    ocl.reduction_write(msu_in, reduction_words_in);
 }
 
 void MSUSDAccel::compute_job(mpz_t msu_out, mpz_t msu_in) {

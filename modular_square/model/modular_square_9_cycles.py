@@ -195,7 +195,8 @@ def compress_grid(grid, grid_size, grid_bit_len, word_len):
    return sub_totals
 
 def modular_square(sqr_in, mod_in, redLUT, redundant_elements, 
-                   nonredundant_elements, num_segments, bit_len, word_len):
+                   nonredundant_elements, num_segments, bit_len, word_len, 
+                   stats):
 
    #############################################################################
    # Parameters
@@ -334,6 +335,12 @@ def modular_square(sqr_in, mod_in, redLUT, redundant_elements,
    for j in range (TWO_SEGMENTS):
       v7v6[j] = sub_totals_cycle_0[j + SEGMENT_ELEMENTS]
 
+   for j in range (REDUNDANT_ELEMENTS + EXTRA_ELEMENTS):
+      if (v7v6[j + (SEGMENT_ELEMENTS*2)] > 0):
+         stats[str('V7V6_Extra_'+str(j))] = hex(v7v6[j + (SEGMENT_ELEMENTS*2)])
+      elif (str('V7V6_Extra_'+str(j)) in stats):
+         del stats[str('V7V6_Extra_'+str(j))]
+
    #print_poly_hex("v7v6        ", v7v6)
    #print_poly_hex("v5_partial  ", v5_partial)
 
@@ -381,6 +388,10 @@ def modular_square(sqr_in, mod_in, redLUT, redundant_elements,
    v5v4_partial = (TWO_SEGMENTS)*[0]
    for j in range (TWO_SEGMENTS):
       v5v4_partial[j] = sub_totals_cycle_1[j]
+
+   #for j in range (REDUNDANT_ELEMENTS + EXTRA_ELEMENTS):
+   #   v5v4_partial_extra_elements[j] =  v5v4_partial[j + (SEGMENT_ELEMENTS*2)]
+   #print_poly_hex("v5v4_partial_extra_elements", v5v4_partial_extra_elements)
 
    #print_poly_hex("v5v4_partial", v5v4_partial)
 
@@ -482,7 +493,8 @@ def modular_square(sqr_in, mod_in, redLUT, redundant_elements,
    #                                  |-----------------------------------|
 
    # Running accumulation total
-   curr_accum = (NUM_ELEMENTS+EXTRA_ELEMENTS)*[0]
+   #curr_accum = (NUM_ELEMENTS+EXTRA_ELEMENTS)*[0]
+   curr_accum = (NUM_ELEMENTS)*[0]
 
    # Upper bits need to be shifted before accumulating
    for i in range (TWO_SEGMENTS):
@@ -527,8 +539,9 @@ def modular_square(sqr_in, mod_in, redLUT, redundant_elements,
    #print('C3 subtotal')
    #print_compressed_grid(sub_totals_cycle_3)
 
-   v3 = (ONE_SEGMENT)*[0]
-   for j in range (ONE_SEGMENT):
+   #v3 = (ONE_SEGMENT)*[0]
+   v3 = (SEGMENT_ELEMENTS+REDUNDANT_ELEMENTS)*[0]
+   for j in range (SEGMENT_ELEMENTS+REDUNDANT_ELEMENTS):
       v3[j] = sub_totals_cycle_3[j+SEGMENT_ELEMENTS]
 
    #print_poly_hex("v3          ", v3)
@@ -735,7 +748,8 @@ def modular_square(sqr_in, mod_in, redLUT, redundant_elements,
    for i in range (THREE_SEGMENTS):
       curr_accum[i] += v2v0[i]
 
-   for i in range (ONE_SEGMENT):
+   #for i in range (ONE_SEGMENT):
+   for i in range (SEGMENT_ELEMENTS+REDUNDANT_ELEMENTS):
       curr_accum[i+(SEGMENT_ELEMENTS*3)] += v3[i]
 
    partial_reduction(curr_accum, 0, NUM_ELEMENTS, WORD_LEN)
@@ -832,7 +846,7 @@ def generate_reduction_luts(mod_in, nonredundant_elements, redundant_elements,
 def check(mod_sqr_in, mod_in, mod_sqr_out_to_check):
    expected = (sqr_in * sqr_in) % mod_in
 
-   debug = 1;
+   debug = 0;
 
    if ((expected != mod_sqr_out_to_check) | debug):
       print()
@@ -875,8 +889,7 @@ nonredundants  = [8, 16, 32, 64, 128] # number of elements list
 word_lens      = [4, 8, 16]           # bit length of each element
 
 num_redundants = [2]
-#nonredundants  = [128]
-nonredundants  = [32]
+nonredundants  = [128]
 word_lens      = [16]
 
 for l in word_lens:
@@ -891,17 +904,22 @@ for l in word_lens:
          #checkLUTS(redLUT, s_redLUT, k, 2*(2**(l//2)), ((k//4)*2)+j)
 
          #sqr_in = 0xf728b4fa42485e3a0a5d2f346baa9455
-         #sqr_in = random.getrandbits((k+j)*l) % M
+         #sqr_in = random.getrandbits((k+j)*l)
          #sqr_in = (2**2048)-1
          #sqr_in = (2**((k+j)*l))-1
          sqr_in = random.getrandbits(k*l)
+
+         stats = {}
          
          print("Testing num elements", k, "+", j, "with word len", l)
          for i in range (num_tests):
             tests_run += 1
 
             mod_sqr_out = modular_square(sqr_in, mod_in, redLUT, j, 
-                                         k, num_segments, (l+1), l)
+                                         k, num_segments, (l+1), l, stats)
+
+            print('Statistics:')
+            print(stats)
 
             check_mod_sqr_out = mod_sqr_out % mod_in
 

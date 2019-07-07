@@ -14,6 +14,9 @@
   limitations under the License.
 *******************************************************************************/
 
+// Enable 26x17 bit multiplies (17x17 bit multiplies if commented out)
+//`define DSP26BITS 1
+
 module modular_square_8_cycles
    #(
      parameter int REDUNDANT_ELEMENTS    = 2,
@@ -21,17 +24,21 @@ module modular_square_8_cycles
      parameter int NUM_SEGMENTS          = 4,
      parameter int BIT_LEN               = 17,
      parameter int WORD_LEN              = 16,
+     parameter int REDUCTION_DIN_LEN     = 32,
 
      parameter int NUM_ELEMENTS          = REDUNDANT_ELEMENTS +
                                            NONREDUNDANT_ELEMENTS
     )
    (
-    input  logic                clk,
-    input  logic                rst,
-    input  logic                start,
-    input  logic [BIT_LEN-1:0]  sq_in[NUM_ELEMENTS],
-    output logic [BIT_LEN-1:0]  sq_out[NUM_ELEMENTS],
-    output logic                valid
+    input logic                   clk,
+    input logic                   rst,
+    input logic                   start,
+    input logic [BIT_LEN-1:0]     sq_in[NUM_ELEMENTS],
+    output logic [BIT_LEN-1:0]    sq_out[NUM_ELEMENTS],
+    output logic                  valid,
+    input                         reduction_we,
+    input [REDUCTION_DIN_LEN-1:0] reduction_din,
+    input                         reduction_din_valid
    );
 
    localparam int SEGMENT_ELEMENTS    = int'(NONREDUNDANT_ELEMENTS /
@@ -47,11 +54,15 @@ module modular_square_8_cycles
                                         REDUNDANT_ELEMENTS;
 
    localparam int NUM_MULTIPLIERS     = 2;
+`ifdef DSP26BITS   
+   localparam int MUL_BIT_LEN         = WORD_LEN + $clog2(MUL_NUM_ELEMENTS*2);
+`else
    localparam int EXTRA_MUL_TREE_BITS = (BIT_LEN > WORD_LEN)         ?
                                          $clog2(MUL_NUM_ELEMENTS)    :
                                          $clog2(MUL_NUM_ELEMENTS*2);
    localparam int MUL_BIT_LEN         = ((BIT_LEN*2) - WORD_LEN)     +
                                         EXTRA_MUL_TREE_BITS;
+`endif
 
    // Accumulator tree adds up to 9 values together of various lengths
    // 1*BIT_LEN
@@ -72,8 +83,13 @@ module modular_square_8_cycles
 
    // TODO - The +1 is not really needed.  Used in loops below for convenience
    // Because there is a j+1 in setting carry over
+`ifdef DSP26BITS   
    localparam int GRID_SIZE           = (MUL_NUM_ELEMENTS*2) + 1 +
-                                        (MUL_NUM_ELEMENTS - REDUNDANT_ELEMENTS);
+                                        SEGMENT_ELEMENTS;
+`else
+   localparam int GRID_SIZE           = (MUL_NUM_ELEMENTS*2) + 1 +
+                                     (MUL_NUM_ELEMENTS - REDUNDANT_ELEMENTS);
+`endif
 
    localparam int LOOK_UP_WIDTH       = int'(WORD_LEN / 2);
    localparam int LUT_SIZE            = 2**LOOK_UP_WIDTH;
@@ -102,6 +118,9 @@ module modular_square_8_cycles
    logic [BIT_LEN-1:0]       sq_in_d1[NUM_ELEMENTS];
    logic                     start_d1;
 
+   // Flop the lower half of sq_out -> sq_in
+   logic [BIT_LEN-1:0]       sq_out_d1[NONREDUNDANT_ELEMENTS/2];
+
    // Input to square (start of phase 1)
    logic [BIT_LEN-1:0]       curr_sq_in[NUM_ELEMENTS];
 
@@ -116,8 +135,13 @@ module modular_square_8_cycles
    logic [1:0]               mul_B_select[NUM_MULTIPLIERS];
    logic [BIT_LEN-1:0]       mul_A[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS];
    logic [BIT_LEN-1:0]       mul_B[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS];
+`ifdef DSP26BITS   
+   logic [MUL_BIT_LEN-1:0]   mul_cout[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS*2+1];
+   logic [MUL_BIT_LEN-1:0]   mul_s[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS*2+1];
+`else
    logic [MUL_BIT_LEN-1:0]   mul_cout[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS*2];
    logic [MUL_BIT_LEN-1:0]   mul_s[NUM_MULTIPLIERS][MUL_NUM_ELEMENTS*2];
+`endif
 
    logic [GRID_BIT_LEN-1:0]  grid[GRID_SIZE][GRID_NUM_ELEMENTS];
    logic [GRID_BIT_LEN-1:0]  C[GRID_SIZE];
@@ -299,9 +323,23 @@ module modular_square_8_cycles
       end
    end
 
+   always_ff @(posedge clk) begin
+      for (int k=0; k<NONREDUNDANT_ELEMENTS/2; k=k+1) begin
+         sq_out_d1[k] <= sq_out[k];
+      end
+   end
+
    // Mux square input from external or loopback
+   // When looping back use the flopped lower half coefficients
    always_comb begin
-      for (int k=0; k<NUM_ELEMENTS; k=k+1) begin
+      for (int k=0; k<NONREDUNDANT_ELEMENTS/2; k=k+1) begin
+         curr_sq_in[k][BIT_LEN-1:0]    = sq_out_d1[k][BIT_LEN-1:0];
+
+         if (start_d1) begin
+            curr_sq_in[k][BIT_LEN-1:0] = sq_in_d1[k][BIT_LEN-1:0];
+         end
+      end
+      for (int k=NONREDUNDANT_ELEMENTS/2; k<NUM_ELEMENTS; k=k+1) begin
          curr_sq_in[k][BIT_LEN-1:0]    = sq_out[k][BIT_LEN-1:0];
 
          if (start_d1) begin
@@ -375,6 +413,21 @@ module modular_square_8_cycles
    // Instantiate multipliers
    generate
       for (i=0; i<NUM_MULTIPLIERS; i=i+1) begin : mul
+`ifdef DSP26BITS   
+         multiply_diff_widths #(.NUM_ELEMENTS(MUL_NUM_ELEMENTS),
+                    .LG_BIT_LEN(26),
+                    .BIT_LEN(BIT_LEN),
+                    .LG_WORD_LEN(25),
+                    .WORD_LEN(WORD_LEN)
+                   )
+            multiply (
+                      .clk(clk),
+                      .A(mul_A[i]),
+                      .B(mul_B[i]),
+                      .Cout(mul_cout[i]),
+                      .S(mul_s[i])
+                     );
+`else
          multiply #(.NUM_ELEMENTS(MUL_NUM_ELEMENTS),
                     .A_BIT_LEN(BIT_LEN),
                     .B_BIT_LEN(BIT_LEN),
@@ -387,6 +440,7 @@ module modular_square_8_cycles
                       .Cout(mul_cout[i]),
                       .S(mul_s[i])
                      );
+`endif
       end
    endgenerate
 
@@ -652,14 +706,18 @@ module modular_square_8_cycles
    reduction_lut #(.REDUNDANT_ELEMENTS(REDUNDANT_ELEMENTS),
                    .NONREDUNDANT_ELEMENTS(NONREDUNDANT_ELEMENTS),
                    .NUM_SEGMENTS(NUM_SEGMENTS),
-                   .WORD_LEN(WORD_LEN)
+                   .WORD_LEN(WORD_LEN),
+                   .DIN_LEN(REDUCTION_DIN_LEN)
                   )
       reduction_lut (
                      .clk(clk),
                      .shift_high(curr_lookup_shift),
                      .shift_overflow(curr_overflow),
                      .lut_addr(lut_addr),
-                     .lut_data(lut_data)
+                     .lut_data(lut_data),
+                     .we(reduction_we),
+                     .din(reduction_din),
+                     .din_valid(reduction_din_valid)
                     );
 
    // Accumulate reduction lut values with running total
