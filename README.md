@@ -42,10 +42,9 @@ This document describes the steps required to execute the model on the supported
 **Recommended steps to get started**
 
 1. Clone this model, run verilator simulations. This should work on a laptop and no licenses are required. 
+1. Develop your new and improved multiplier.
 1. Run hardware emulation, either on-premise or using an AWS host. If you don't have the necessary licenses this can wait.
-1. Develop your new and improved modular squaring circuit. See the list of optimization ideas. Python is a great way to quickly prototype potential algorithms before coding them in Verilog. See `modular_square/model/modular_square_9_cycles.py` as an example. You could also try HLS (High Level Synthesis). 
-1. Develop your new and improved multiplier. Swap out modsqr in msu.sv with your implementation. 
-1. Use Vivado out-of-context mode to understand and tune your design.
+1. Use Vivado out-of-context synthesis mode to understand and tune your design.
 1. Run hardware emulation and debug any problems.
 1. Use the SDAccel synthesis flow to verify and fine tune the results.
 1. Test the design on FPGA hardware for functionality and performance. 
@@ -65,36 +64,16 @@ The following are some potential optimization paths.
 
 # Verilator Simulation
 
-## Dependencies (Ubuntu)
+## Dependencies
 
 GMP, Verilator, and python3 are required to build and run the model. 
 
-Python3 and GMP can be installed from apt:
+Run the setup script to install the required dependencies on Ubuntu or CentOS:
+```
+./msu/scripts/simulation_setup.sh
+```
 
-```
-sudo apt install -y python3 libgmp-dev
-```
-
-Verilator can be installed from source (<https://www.veripool.org/projects/verilator/wiki/Installing>):
-
-```
-sudo apt update
-wget https://www.veripool.org/ftp/verilator-4.016.tgz
-sudo apt-get install make autoconf g++ flex bison
-tar xvzf verilator*.t*gz
-cd verilator-4.016/
-./configure 
-make -j 4
-sudo make install
-```
-## Dependencies (CentOS)
-
-The AWS FPGA servers use CentOS and require the following dependencies:
-
-```
-sudo yum update -y
-sudo yum install -y gmp-devel verilator python36
-```
+Note that on Ubuntu this will build verilator from source and install it in /usr/local/bin since it is not available as a package. 
 
 ## Regressions
 
@@ -122,7 +101,7 @@ ITERATIONS=1 T_FINAL=10 make
 
 AWS F1 supports hardware emulation as well as FPGA accelerated execution. 
 
-The typical workflow involves two types of hosts:
+The typical workflow involves two types of hosts. You will most likely have to submit a request for an instance limit increase. This process is described in the error message if you try to instantiate one of these hosts and your limit is insufficient.
 - Development, using a z1d.2xlarge with no attached FPGA
 - Accelerated, using a f1.2xlarge with attached FPGA
 
@@ -153,45 +132,30 @@ You may find it convenient to install additional ssh keys for github, etc.
 
 ## Host setup
 
-Once you have instantiated a host and logged in some initial setup is required. See <https://github.com/aws/aws-fpga/blob/master/SDAccel/README.md> for more detail.
+Some initial setup is required for new F1 hosts. See <https://github.com/aws/aws-fpga/blob/master/SDAccel/README.md> for more detail.
 
-On the AWS host enable the F1 environment:
+We've encapsulated a typical setup that includes vnc:
 ```
-# Install AWS FPGA content
-
-git clone https://github.com/aws/aws-fpga.git $AWS_FPGA_REPO_DIR;
-cd $AWS_FPGA_REPO_DIR && git pull;
-source $AWS_FPGA_REPO_DIR/sdaccel_setup.sh
+./msu/scripts/f1_setup.sh
 ```
 
-Optionally, install VNC server for an interactive X-windows interface:
+You can then optionally start a vncserver if you prefer to work in an X-windows environment:
 ```
-# Install VNC (optional, but provides a richer working environment)
-sudo yum -y install tigervnc-server tigervnc-server-minimal
-sudo yum -y groupinstall X11
-sudo yum --enablerepo=epel -y groups install "Xfce" 
-sudo yum -y install kdiff3
-sudo yum -y install emacs
-
-cd
-mkdir .vnc
-cd .vnc
-cat <<EOF > xstartup
-#!/bin/bash
-startxfce4 &
-EOF
-chmod +x xstartup 
-
 # Start a vncserver
 vncserver
 ```
 
-With VNC installed you can now connect to the new host using ssh tunneling for VNC traffic. Replace HOST with the AWS server hostname. This command will tunnel display :1 on the AWS host to display :8 on the localhost. You can then run vncviewer :8 locally to connect to the remote vnc server. 
+Connect using ssh to tunnel the vnc port:
 ```
 ssh -L 5908:localhost:5901 centos@HOST
 ```
 
-Once you have vnc up you can run vncconfig from a terminal to enable copy/paste:
+And view it locally:
+```
+vncviewer :8
+```
+
+Once you have vnc up run vncconfig to enable copy/paste:
 ```
 vncconfig &
 ```
@@ -200,7 +164,7 @@ vncconfig &
 
 To build and run a test in hardware emulation:
 ```
-source $AWS_FPGA_REPO_DIR/sdaccel_setup.sh
+source ./msu/scripts/sdaccel_env.sh
 cd msu
 make clean
 make hw_emu
@@ -220,7 +184,7 @@ Synthesis and Place&Route compile the design from RTL into a bitstream that can 
 You can enable a **faster run** by relaxing the kernel frequency (search for kernel_frequency in the Makefile) or building a smaller multiplier (comment out 1024b, uncomment 128b in the Makefile). This is often convenient when trying things out.
 
 ```
-source $AWS_FPGA_REPO_DIR/sdaccel_setup.sh
+source ./msu/scripts/sdaccel_env.sh
 cd msu/rtl/sdaccel
 make clean
 make hw
@@ -229,6 +193,14 @@ make hw
 Once synthesis successfully completes you can register the new image. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdf'. Once that is done run the following:
 
 ```
+# Configure AWS credentials. You should only need to do this once on a given
+# host
+#    AWS Access Key ID [None]: XXXXXX
+#    AWS Secret Access Key [None]: XXXXXX
+#    Default region name [None]: us-east-1
+#    Default output format [None]: json
+aws configure
+
 # Register the new bitstream
 cd obj/xclbin
 KERNEL=vdf
@@ -281,6 +253,8 @@ The steps to enable an on-premise are described here: <https://github.com/aws/aw
 
 You will need a license for the vu9p in Vivado and for SDAccel. Xilinx offers trial licenses on their website. The licenses should be loaded through the license manager, which is accessed from the Vivado Help menu. 
 
+Host requirements: 32GB of memory is preferred though 16GB of memory should be sufficient. Single threaded performance is the main determinant of runtime. 
+
 ## Ubuntu 18
 
 While Ubuntu 18 is not officially supported, the on-premise flow can be made to work with a few additional changes after installing SDAccel.
@@ -303,30 +277,11 @@ cd /bin
 sudo ln -s /usr/bin/env
 ```
 
-## Environment 
-
-Once SDAccel is installed clone the aws-fpga repo:
-
-```
-export AWS_FPGA_REPO_DIR=~/src/project_data/aws-fpga
-git clone https://github.com/aws/aws-fpga.git $AWS_FPGA_REPO_DIR
-cd $AWS_FPGA_REPO_DIR
-source sdaccel_setup.sh
-```
-
-Set up the local environment:
-```
-export XILINX_SDX=/tools/Xilinx/SDx/2018.3
-export AWS_FPGA_REPO_DIR=~/src/project_data/aws-fpga
-PATH=/tools/Xilinx/SDx/2018.3/bin/:$PATH
-
-# The following will require a sudo password
-source $AWS_FPGA_REPO_DIR/sdaccel_setup.sh
-```
-
+## helloworld
 
 The `helloworld_ocl` example should now successfully complete:
 ```
+source ./msu/scripts/sdaccel_env.sh
 cd $AWS_FPGA_REPO_DIR/SDAccel/examples/xilinx/getting_started/host/helloworld_ocl
 
 # in Makefile, change DEVICE to:
@@ -334,6 +289,10 @@ DEVICE := $(AWS_PLATFORM)
 
 make cleanall; make TARGETS=sw_emu DEVICES=$AWS_PLATFORM check
 ```
+
+You can now follow the hardware emulation and synthesis flows described above. 
+
+To register the image built from on-premise synthesis first copy the msu/rtl/obj/xclbin/vdf.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0.xclbin and host files to an AWS F1 instance, then run `create_sdaccel_afi.sh`.
 
 # Vivado Out-of-context Synthesis
 
