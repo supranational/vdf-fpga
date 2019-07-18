@@ -46,21 +46,29 @@ public:
     OpenCLContext() {}
     ~OpenCLContext();
     void init(int msu_words_in, int msu_words_out);
-    void reduction_we(bool enable);
-    void reduction_write(mpz_t msu_in, int reduction_words_in);
     void compute_job(mpz_t msu_out, mpz_t msu_in);
 };
 
 class MSUSDAccel : public MSUDevice {
     OpenCLContext ocl;
 public:
-    MSUSDAccel() {}
-    virtual ~MSUSDAccel() {}
+    mpz_t msu_in;
+    mpz_t msu_out;
+    int msu_words_in;
+    int msu_words_out;
+
+    MSUSDAccel() {
+        mpz_inits(msu_in, msu_out, 0);
+    }
+    virtual ~MSUSDAccel() {
+        mpz_clears(msu_in, msu_out, 0);
+    }
     
-    virtual void init(int msu_words_in, int msu_words_out);
-    virtual void reduction_we(bool enable);
-    virtual void reduction_write(mpz_t msu_in, int reduction_words_in);
-    virtual void compute_job(mpz_t msu_out, mpz_t msu_in);
+    virtual void init(MSU *_msu, Squarer *_squarer);
+    virtual void compute_job(uint64_t t_start,
+                             uint64_t t_final,
+                             mpz_t sq_in,
+                             mpz_t sq_out);
 
     virtual void set_quiet(bool _quiet) {
         quiet     = _quiet;

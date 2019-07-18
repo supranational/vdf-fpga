@@ -96,10 +96,7 @@ void MSUVerilator::reset() {
     // Reset the device
     tb->reset           = 1;
     tb->clk             = 1;
-    tb->ap_start        = 0;
-    tb->s_axis_tlast    = 0;
-    tb->s_axis_tvalid   = 0;
-    tb->m_axis_tready   = 0;
+    tb->start           = 0;
 
     for(int i = 0; i < 10; i++) {
         clock_cycle();
@@ -116,26 +113,32 @@ void MSUVerilator::compute_job(uint64_t t_start,
                                uint64_t t_final,
                                mpz_t sq_in,
                                mpz_t sq_out) {
-    // Load values
-    tb->ap_start     = 1;
-    clock_cycle();
-    tb->ap_start     = 0;
-
-    squarer->pack(msu_in, t_start, t_final, sq_in);
-    gmp_printf("msu_in is 0x%Zx\n", msu_in);
-    axi_write(msu_in, squarer->msu_words_in());
-        
-    while(!tb->start_xfer) {
-        clock_cycle();
-    }
-    pet();
+    reset();
     
-    //bn_from_buffer(msu_out, tb->msu_out, squarer->msu_words_out());
-    axi_read(msu_out, squarer->msu_words_out());
-    gmp_printf("MSU result is 0x%Zx\n", msu_out);
+    // Number of 32-bit words we need to copy from mpz to sq_in/sq_out
+    //int sq_words = msu->mod_len / 8 / BN_BUFFER_SIZE;
+    bn_to_buffer(sq_in, tb->sq_in, squarer->msu_words_in(), true, true);
 
-    uint64_t t_final_out;
-    squarer->unpack(sq_out, &t_final_out, msu_out, WORD_LEN);
+    // Load values
+    tb->start     = 1;
+    clock_cycle();
+    tb->start     = 0;
+
+    uint64_t t_cur = t_start;
+    while(t_cur < t_final ){
+        while(!tb->valid) {
+            clock_cycle();
+        }
+        pet();
+        
+        clock_cycle();
+        t_cur++;
+    }
+        
+    bn_from_buffer(msu_out, tb->sq_out, squarer->msu_words_out());
+    gmp_printf("squarer result is 0x%Zx\n", msu_out);
+
+    squarer->unpack(sq_out, 0, msu_out, WORD_LEN);
 
     clock_cycle();
     clock_cycle();
@@ -167,48 +170,3 @@ void MSUVerilator::clock_cycle() {
 #endif
 }
 
-void MSUVerilator::axi_write(mpz_t data, int words) {
-    while(words > 0) {
-        uint32_t d = mpz_get_ui(data);
-        bn_shr(data, BN_BUFFER_SIZE*8);
-        
-        while(!tb->s_axis_tready) {
-            clock_cycle();
-        }
-        pet();
-
-        if(words == 1) {
-            tb->s_axis_tlast = 1;
-        }
-        tb->s_axis_tvalid = 1;
-        tb->s_axis_tdata = d;
-        clock_cycle();
-        tb->s_axis_tlast = 0;
-        words--;
-    }
-    clock_cycle();
-}
-
-
-void MSUVerilator::axi_read(mpz_t data, int words) {
-    printf("Reading from axi\n");
-    mpz_t d;
-    mpz_init(d);
-
-    uint64_t total_words = words;
-    
-    tb->m_axis_tready = 1;
-    while(words > 0) {
-        while(!tb->m_axis_tvalid) {
-            clock_cycle();
-        }
-        pet();
-        
-        bn_shr(data, BN_BUFFER_SIZE*8);
-        mpz_set_ui(d, tb->m_axis_tdata);
-        bn_shl(d, (total_words-1) * BN_BUFFER_SIZE*8);
-        mpz_add(data, data, d);
-        clock_cycle();
-        words--;
-    }
-}

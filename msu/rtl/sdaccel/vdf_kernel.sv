@@ -34,11 +34,6 @@
 
 `include "msuconfig.vh"
 
-// MSU configuration
-`ifndef NONREDUNDANT_ELEMENTS_DEF
- `define NONREDUNDANT_ELEMENTS_DEF 8
-`endif
-
 // default_nettype of none prevents implicit wire declaration.
 `default_nettype none
 
@@ -156,11 +151,11 @@ inst_axi_read_master (
   .m_axis_tdata            ( rd_tdata                )
 );
 
-// Adder is combinatorial
 msu #(
-  .AXI_LEN               ( C_M_AXI_DATA_WIDTH         ) ,
-  .C_XFER_SIZE_WIDTH     ( C_XFER_SIZE_WIDTH          ) ,
-  .NONREDUNDANT_ELEMENTS ( `NONREDUNDANT_ELEMENTS_DEF )
+  .AXI_LEN               ( C_M_AXI_DATA_WIDTH         ),
+  .C_XFER_SIZE_WIDTH     ( C_XFER_SIZE_WIDTH          ),
+  .SQ_IN_BITS            ( `SQ_IN_BITS_DEF            ),
+  .SQ_OUT_BITS           ( `SQ_OUT_BITS_DEF           )
 )
 msu  
 (
@@ -179,7 +174,6 @@ msu
  .start_xfer    ( start_xfer                   ) ,
  .ap_start      ( ap_start                     ) ,
  .ap_done       ( ap_done_core                 ) ,
- .reduction_we  ( input0[0]                    ) ,
  .m_axis_xfer_size_in_bytes(adder_out_xfer_size_in_bytes),
  .s_axis_xfer_size_in_bytes(adder_in_xfer_size_in_bytes)
 );

@@ -4,32 +4,13 @@ This repository contains the modular squaring multiplier baseline design for the
 
 The algorithm used is a pipelined version of the multiplier developed by Erdinc Ozturk of Sabanci University and described in detail at MIT VDF Day 2019 (<https://dci.mit.edu/video-gallery/2019/5/29/survey-of-hardware-multiplier-techniques-new-innovations-in-low-latency-multipliers-e-ozturk>). 
 
+There is also a very simple example using the high level operators (a*a)%N.
+
 The model is not yet finalized. Expect to see changes leading up the competition start. Please reach out with any questions, comments, or feedback to hello@supranational.net.
-
-**Table of Contents**
-
-- [MSU](#msu)
-- [Potential Optimizations](#potential-optimizations)
-- [Verilator Simulation](#verilator-simulation)
-  - [Dependencies (Ubuntu)](#dependencies-ubuntu)
-  - [Dependencies (CentOS)](#dependencies-centos)
-  - [Regressions](#regressions)
-  - [Single simulation runs](#single-simulation-runs)
-- [AWS F1](#aws-f1)
-  - [Host instantiation](#host-instantiation)
-  - [Host setup](#host-setup)
-  - [Hardware Emulation](#hardware-emulation)
-  - [Hardware Synthesis](#hardware-synthesis)
-  - [FPGA Execution](#fpga-execution)
-- [SDAccel On-Premise](#sdaccel-on-premise)
-  - [Ubuntu 18](#ubuntu-18)
-  - [Environment](#environment)
-- [Vivado Out-of-context Synthesis](#vivado-out-of-context-synthesis)
-- [References](#references)
 
 # MSU
 
-The MSU (Modular Squaring Unit) in `msu/rtl` is the top level component of the model. It is responsible for interfacing to the outside world through AXI Lite, instantiates the modular squaring unit, and controls execution.
+The MSU (Modular Squaring Unit) in `msu/rtl` is the top level component of the model. It is an SDAccel RTL Kernel compatible module responsible for interfacing to the outside world through AXI Lite. Internally it instantiates and controls execution of the modular squaring unit.
 
 The model supports three build targets:
 
@@ -39,17 +20,91 @@ The model supports three build targets:
 
 This document describes the steps required to execute the model on the supported targets.
 
-**Recommended steps to get started**
+# Recommended steps
 
-1. Clone this model, run verilator simulations. This should work on a laptop and no licenses are required. 
-1. Develop your new and improved multiplier.
-1. Run hardware emulation, either on-premise or using an AWS host. If you don't have the necessary licenses this can wait.
-1. Use Vivado out-of-context synthesis mode to understand and tune your design.
-1. Run hardware emulation and debug any problems.
-1. Use the SDAccel synthesis flow to verify and fine tune the results.
-1. Test the design on FPGA hardware for functionality and performance. 
+## Step 1 - Enable simulation environment
 
-# Potential Optimizations
+Supported OS's are Ubuntu 18 and AWS F1 CentOS. The setup script requires sudo access to install dependencies.
+
+```
+# Install dependencies
+./msu/scripts/simulation_setup.sh
+
+# Run simulations
+cd msu
+make
+```
+
+## Step 2 - Develop your squarer in Python/RTL
+
+Two squaring circuits are provided as examples, `modular_square/rtl/modular_square_simple.sv` and `modular_square/rtl/modular_square_8_cycles.sv`. You can start from either one. 
+
+Search for "EDIT HERE" to quickly find starting points for editing:
+```
+find . -type f -exec grep "EDIT HERE" {} /dev/null \;
+```
+
+There are two testbench environments:
+- Direct - the testbdench interacts directly with the squaring circuit.
+- MSU - the testbench interacts with the MSU control module. 
+
+The Direct testbench provides a simpler environment for developing. 
+
+Note the default bitwidth for the simple squarer is 128bits due to verilator limitations. If you start with this design be sure to raise the bitwidth to 1024 in `msu/rtl/Makefile`.
+
+You can run simulations for either of the designs:
+```
+cd msu 
+
+# Simple squarer
+make clean; DIRECT_TB=1 make simple
+
+# 8 cycle Ozturk squarer
+make clean; DIRECT_TB=1 make ozturk
+
+# View waveforms
+gtkwave rtl/obj_dir/logs/vlt_dump.vcd
+```
+
+## Step 3 - Synthesize
+
+Once you have made changes to the multiplier you can run synthesis to in Vivado, AWS F1, or the test portal to measure and tune performance. 
+
+**_Vivado_**
+
+The Vivado GUI makes it easy to try different parameters and visualize results. 
+
+```
+# Simple squarer
+cd msu/rtl/vivado_simple
+./run_vivado.sh
+
+# 8 cycle Ozturk squarer
+cd msu/rtl/vivado_ozturk
+./run_vivado.sh
+```
+
+This will launch Vivado with a project configured to build the Ozturk multiplier in out-of-context mode. While not identical to the sdaccel synthesis, it include a pblock that mimics the Shell Logic exclusion are so the results are pretty close. Another pblock forces the latency critical logic to stay in SLR2 for improved performance. 
+
+**Bitwidth**: To test out smaller bitwidths edit the `run_vivado.sh` script. For the Ozturk multiplier be sure to run the script first at 1024 bits to generate the full complement of reduction lookup table files. **If you start with the simple squarer design be sure to increase the bitwidth once you add your multiplier to test at the full 1024 bits.**
+
+**_AWS F1_**
+
+You can use the AWS cloud to run synthesis for F1. See [aws_f1](docs/aws_f1.md).
+
+**_On Premise_**
+
+You can set up an on-premise environment to targeting the AWS F1 platform. See [on-premise](docs/onprem.md).
+
+**_Test portal_**
+
+TODO: You can submit models to be run on your behalf. 
+
+## Step 4 - Hardening
+
+Ultimately the `judge` target must pass to qualify for the competition. It runs simulations, hardware emulation, and synthesis, and bitstream generation. Like synthesis, you can run on-premise, use AWS F1, or use the test portal.
+
+# Optimization Ideas
 
 The following are some potential optimization paths.
 
@@ -61,243 +116,6 @@ The following are some potential optimization paths.
 * Optimize the compression trees and accumulators to make the best use of FPGA LUTs and CARRY8 primitives.
 * Floorplan the design.
 * Use High Level Synthesis (HLS) or other techniques.
-
-# Verilator Simulation
-
-## Dependencies
-
-GMP, Verilator, and python3 are required to build and run the model. 
-
-Run the setup script to install the required dependencies on Ubuntu or CentOS:
-```
-./msu/scripts/simulation_setup.sh
-```
-
-Note that on Ubuntu this will build verilator from source and install it in /usr/local/bin since it is not available as a package. 
-
-## Regressions
-
-Regressions:
-```
-cd msu
-make
-```
-
-## Single simulation runs
-
-You can perform single simulation runs for development, debug, etc. from the rtl directory.
-
-```
-cd msu/rtl
-make
-```
-
-Many aspects of the run can be configured by editing the Makefile or setting environment variables. It is often convenient to do this inline as such:
-```
-ITERATIONS=1 T_FINAL=10 make
-```
-
-# AWS F1
-
-AWS F1 supports hardware emulation as well as FPGA accelerated execution. 
-
-The typical workflow involves two types of hosts. You will most likely have to submit a request for an instance limit increase. This process is described in the error message if you try to instantiate one of these hosts and your limit is insufficient.
-- Development, using a z1d.2xlarge with no attached FPGA
-- Accelerated, using a f1.2xlarge with attached FPGA
-
-AWS provides general information for using F1 (<https://github.com/aws/aws-fpga/blob/master/SDAccel/README.md>). 
-
-A distilled down set of instructions specific to this design follows.
-
-**Note that you can also enable AWS F1 hardware emulation and synthesis on-premise. See [SDAccel On-Premise](#sdaccel-on-premise)**
-
-## Host instantiation
-
-We assume some familiarity with the AWS environment. To instantiate a new AWS host for working with the FPGA follow these steps:
-
-1. Login to the AWS page <https://aws.amazon.com/>, go to the EC2 service portal
-1. Click on Launch Instance
-1. For AMI, go to AWS Marketplace, then search for FPGA
-1. Choose FPGA Developer AMI
-1. For instance type choose z1d.2xlarge for development, f1.2xlarge for FPGA enabled, then Review and Launch
-1. For configuration of the host we recommend:
-  - Increase root disk space by about 20GB for an f1.2xlarge, 60GB for a z1d.2xlarge.
-  - Add a descriptive tag to help track instances and volumes
-1. Launch the instance
-1. In the EC2 Instances page, select the instance and choose Actions->Connect. This will tell you the instance hostname that you can ssh to. 
-  - Note that for the FPGA Developer AMI the username will be 'centos'
-  - Log in with `ssh centos@HOST`
-
-You may find it convenient to install additional ssh keys for github, etc. 
-
-## Host setup
-
-Some initial setup is required for new F1 hosts. See <https://github.com/aws/aws-fpga/blob/master/SDAccel/README.md> for more detail.
-
-We've encapsulated a typical setup that includes vnc:
-```
-./msu/scripts/f1_setup.sh
-```
-
-You can then optionally start a vncserver if you prefer to work in an X-windows environment:
-```
-# Start a vncserver
-vncserver
-```
-
-Connect using ssh to tunnel the vnc port:
-```
-ssh -L 5908:localhost:5901 centos@HOST
-```
-
-And view it locally:
-```
-vncviewer :8
-```
-
-Once you have vnc up run vncconfig to enable copy/paste:
-```
-vncconfig &
-```
-
-## Hardware Emulation
-
-To build and run a test in hardware emulation:
-```
-source ./msu/scripts/sdaccel_env.sh
-cd msu
-make clean
-make hw_emu
-```
-
-Rerunning without cleaning the build will retain the hardware emulation (hardware) portion while rebuilding and executing the host (software) portion.
-
-Tracing is enabled by default in the hw_emu run. To view the resulting waveforms run:
-```
-vivado -source open_waves.tcl
-```
-
-## Hardware Synthesis 
-
-Synthesis and Place&Route compile the design from RTL into a bitstream that can be loaded on the FPGA. This step takes 1-3 hours depending on complexity of the design, host speed, synthesis targets, etc. 
-
-You can enable a **faster run** by relaxing the kernel frequency (search for kernel_frequency in the Makefile) or building a smaller multiplier (comment out 1024b, uncomment 128b in the Makefile). This is often convenient when trying things out.
-
-```
-source ./msu/scripts/sdaccel_env.sh
-cd msu/rtl/sdaccel
-make clean
-make hw
-```
-
-Once synthesis successfully completes you can register the new image. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdfsn' but you will need to change this to match your bucket name. Once that is done run the following:
-
-```
-# Configure AWS credentials. You should only need to do this once on a given
-# host
-#    AWS Access Key ID [None]: XXXXXX
-#    AWS Secret Access Key [None]: XXXXXX
-#    Default region name [None]: us-east-1
-#    Default output format [None]: json
-aws configure
-
-# Register the new bitstream
-# Update S3_BUCKET in Makefile.sdaccel to reflect the name of your bucket.
-cd msu/rtl/sdaccel
-make to_f1
-
-# Check status using the afi_id from the last step. It should say 
-# pending for about 30 minutes, then available.
-cat *afi_id.txt
-aws ec2 describe-fpga-images --fpga-image-ids afi-XXXXXXXXXXXX
-
-# Copy the required files to an FPGA enabled host for execution:
-HOST=xxxx # Your F1 hostname here
-scp obj/to_f1.tar.gz centos@$HOST:.
-```
-
-## FPGA Execution
-
-Once you have synthesized a bitstream, registered it using `create_sdaccel_afi.sh`, describe-fpga-image reports available, and copied the necessary files to an f1 machine you are ready to execute on the FPGA.
-
-Currently debug mode is required due to a known AWS issue. Create an `sdaccel.ini` file in the same directory you will be running from: 
-```
-cat <<EOF > sdaccel.ini 
-[Debug]
-profile=true
-EOF
-```
-
-Execute the host driver code. This will automatically load the image referenced by the awsxclbin file onto the FPGA. 
-```
-tar xf to_f1.tar.gz
-sudo su
-source $AWS_FPGA_REPO_DIR/sdaccel_runtime_setup.sh 
-
-# Run a short test and verify the result in software
-./host -e -u 0 -f 100
-
-# Run a billion iterations starting with an input of 2
-./host -u 0 -s 0x2 -f 1000000000
-```
-
-The expected result of 2^2^1B using the default 1k (64 coefficient) modulus in the Makefile is:
-`305939394796769797811431929207587607176284037479412924905827147439718856946037842431593490055940763973150879770720223457997191020439404083394702653096083649807090448385799021330059496823106654989629199132438283594347957634468046231084628857389350823217443926925454895121571284954146032303555585511855910526`
-
-
-# SDAccel On-Premise
-
-It's possible to perform hardware emulation and synthesis on-premise using the flow defined by AWS. 
-
-The steps to enable an on-premise are described here: <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/On_Premises_Development_Steps.md>.
-
-You will need a license for the vu9p in Vivado and for SDAccel. Xilinx offers trial licenses on their website. The licenses should be loaded through the license manager, which is accessed from the Vivado Help menu. 
-
-Host requirements: 32GB of memory is preferred though 16GB of memory should be sufficient. Single threaded performance is the main determinant of runtime. 
-
-## Ubuntu 18
-
-While Ubuntu 18 is not officially supported, the on-premise flow can be made to work with a few additional changes after installing SDAccel.
-
-```
-# Link to the OS installed version of libstdc++:
-cd /tools/Xilinx/SDx/2018.3/lib/lnx64.o/Default/
-mv libstdc++.so.6 libstdc++.so.6_orig
-ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6
-
-cd /tools/Xilinx/SDx/2018.3/lib/lnx64.o/Default/
-mv libstdc++.so.6 libstdc++.so.6_orig
-ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6
-
-# After the changes above this should report "ERROR: no card found"
-/opt/xilinx/xrt/bin/xbutil validate
-
-# Some of the python scripts reference /bin/env
-cd /bin
-sudo ln -s /usr/bin/env
-```
-
-## helloworld
-
-The `helloworld_ocl` example should now successfully complete:
-```
-source ./msu/scripts/sdaccel_env.sh
-cd $AWS_FPGA_REPO_DIR/SDAccel/examples/xilinx/getting_started/host/helloworld_ocl
-
-# in Makefile, change DEVICE to:
-DEVICE := $(AWS_PLATFORM)
-
-make cleanall; make TARGETS=sw_emu DEVICES=$AWS_PLATFORM check
-```
-
-You can now follow the hardware emulation and synthesis flows described above. 
-
-To register the image built from on-premise synthesis first copy the msu/rtl/obj/xclbin/vdf.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0.xclbin and host files to an AWS F1 instance, then run `create_sdaccel_afi.sh`.
-
-# Vivado Out-of-context Synthesis
-
-TODO
-
 
 # References
 

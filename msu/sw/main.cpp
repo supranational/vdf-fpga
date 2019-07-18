@@ -21,13 +21,18 @@
 
 #if defined(FPGA) || defined(SDX_PLATFORM)
 #include <MSUSDAccel.hpp>
+#elif defined(SIMPLE_SQ)
+#include <verilated.h>
+#include <MSUVerilator.hpp>
 #else
 #include <verilated.h>
 #include <MSUVerilator.hpp>
 #endif
 
-#ifndef NONREDUNDANT_ELEMENTS
-#define NONREDUNDANT_ELEMENTS 8
+#include <Squarer.hpp>
+
+#ifndef MOD_LEN
+#define MOD_LEN 1024
 #endif
 #ifndef MODULUS
 #define MODULUS "302934307671667531413257853548643485645"
@@ -44,12 +49,8 @@ void print_usage() {
     printf("  -i num   Set the number of test iterations to run\n");
     printf("  -f num   Set t_final\n");
     printf("  -t num   Number of modsqr iterations per intermediate value\n");
-    printf("  -w num   Set word length, in bits (default 16)\n");
-    printf("  -r num   Set the number of redundant elements\n");
-    printf("  -n num   Set the number of nonredundant elements\n");
-    printf("  -u num   Set the number of urams\n");
+    printf("  -n num   Set the number of modulus bits\n");
     printf("  -s 0xnum Set the the starting sq_in (default random)\n");
-    printf("  -d path  Path to reduction table .dat files\n");
     printf("\n");
     exit(0);
 }
@@ -64,16 +65,12 @@ int main(int argc, char** argv, char** env) {
     int test_iterations         = 1;
     uint64_t t_final            = 1;
     uint64_t intermediate_iters = 0;
-    int word_len                = 16;
-    int redundant_elements      = 2;
-    int nonredundant_elements   = NONREDUNDANT_ELEMENTS;
-    int num_urams               = 0;
+    int mod_len                 = MOD_LEN;
     bool rrandom                = false;
     bool hw_emu                 = false;
     bool quiet                  = false;
-    const char *reduction_table_path = "./mem";
     int opt;
-    while((opt = getopt(argc, argv, "h1qi:f:t:m:s:w:r:n:u:d:e")) != -1) {
+    while((opt = getopt(argc, argv, "h1qi:f:t:m:s:n:u:e")) != -1) {
         switch(opt) {
         case 'h':
             print_usage();
@@ -96,20 +93,8 @@ int main(int argc, char** argv, char** env) {
         case 't':
             intermediate_iters = atol(optarg);
             break;
-        case 'w':
-            word_len = atoi(optarg);
-            break;
-        case 'r':
-            redundant_elements = atoi(optarg);
-            break;
         case 'n':
-            nonredundant_elements = atoi(optarg);
-            break;
-        case 'u':
-            num_urams = atoi(optarg);
-            break;
-        case 'd':
-            reduction_table_path = optarg;
+            mod_len = atoi(optarg);
             break;
         case 's':
             if(mpz_set_str(sq_in, optarg+2, 16) != 0) {
@@ -136,21 +121,34 @@ int main(int argc, char** argv, char** env) {
     if(hw_emu) {
         printf("Enabling hardware emulation mode\n");
     }
-    
+
 #if defined(FPGA) || defined(SDX_PLATFORM)
     MSUSDAccel   device;
 #else
     MSUVerilator device(argc, argv);
+#endif    
+
+#if defined(SIMPLE_SQ)
+  #if defined(DIRECT_TB)
+    Squarer *squarer = new SquarerSimpleDirect(mod_len, modulus);
+  #else
+    Squarer *squarer = new SquarerSimple(mod_len, modulus);
+  #endif
+#else
+ #if defined(DIRECT_TB)
+    Squarer *squarer = new SquarerOzturkDirect(mod_len, modulus);
+  #else
+    Squarer *squarer = new SquarerOzturk(mod_len, modulus);
+  #endif
 #endif
-    MSU msu(device, word_len,
-            redundant_elements, nonredundant_elements,
-            num_urams, modulus);
+    
+    MSU msu(device, mod_len, modulus);
     msu.set_quiet(quiet);
+    
+    device.init(&msu, squarer);
     device.set_quiet(quiet);
 
     device.reset();
-
-    msu.load_reduction_tables(reduction_table_path);
 
 
     if(intermediate_iters == 0) {
@@ -176,7 +174,7 @@ int main(int argc, char** argv, char** env) {
             }
 
             iter += intermediate_iters;
-            mpz_set(sq_in, msu.reduced_out);
+            mpz_set(sq_in, msu.sq_out);
 
             printf("\n");
             if(failures > 0) {
@@ -186,7 +184,7 @@ int main(int argc, char** argv, char** env) {
                 double ns_per_iter = ((double)msu.compute_time / 
                                       (double)run_t_final);
                 gmp_printf("%lu %0.1lf ns/sq: %Zd\n", iter, ns_per_iter,
-                           msu.reduced_out);
+                           msu.sq_out);
             }
         }
     }

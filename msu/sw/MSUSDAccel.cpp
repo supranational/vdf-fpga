@@ -137,62 +137,24 @@ void OpenCLContext::compute_job(mpz_t msu_out, mpz_t msu_in) {
     }
 }
 
-void OpenCLContext::reduction_we(bool enable) {
-    cl_int err;
-    OCL_CHECK(err, err = krnl_vdf->setArg(0, (uint32_t)enable));
+void MSUSDAccel::init(MSU *_msu, Squarer *_squarer) {
+    MSUDevice::init(_msu, _squarer);
 
-    // Launch the Kernel
-    //OCL_CHECK(err, err = q->enqueueTask(*krnl_vdf));
-
-    //printf("Calling finish on set arg...\n");
-    //OCL_CHECK(err, err = q->finish());
-    //printf("finished set arg...\n");
-
-}
-
-void OpenCLContext::reduction_write(mpz_t msu_in, int reduction_words_in) {
-    if(!quiet) {
-        gmp_printf("reduction write msu_in is 0x%Zx\n", msu_in);
-    }
-    bn_to_buffer(msu_in, input_buf.data(), msu_words_in, true, true);
-    //print_buffer_concise("reduction write msu_in", 
-    //input_buf.data(), msu_words_in);
+    int nonredundant_elements = msu->mod_len / WORD_LEN;
+    int num_elements = nonredundant_elements + REDUNDANT_ELEMENTS;
+    msu_words_in  = (T_LEN/MSU_WORD_LEN*2 + (nonredundant_elements+1)/2);
+    msu_words_out = (T_LEN/MSU_WORD_LEN + num_elements);
     
-    cl_int err;
-    
-    // DMA the buffers to the FPGA
-    OCL_CHECK(err, err = q->enqueueMigrateMemObjects(inBufferVec, 0));
-
-    // Launch the Kernel
-    OCL_CHECK(err, err = q->enqueueTask(*krnl_vdf));
-
-    // DMA the results from FPGA to host
-    OCL_CHECK(err, err =
-              q->enqueueMigrateMemObjects(outBufferVec,
-                                          CL_MIGRATE_MEM_OBJECT_HOST));
-    //printf("Calling finish...\n");
-    OCL_CHECK(err, err = q->finish());
-    //printf("finished...\n");
-
-    // Extract the result
-    // bn_from_buffer(msu_out, output_buf.data(), msu_words_out);
-    // gmp_printf("msu_out is 0x%Zx\n", msu_out);
-    // print_buffer_concise("msu_out", output_buf.data(), msu_words_out);
-}
-
-
-void MSUSDAccel::init(int msu_words_in, int msu_words_out) {
     ocl.init(msu_words_in, msu_words_out);
 }
 
-void MSUSDAccel::reduction_we(bool enable) {
-    ocl.reduction_we(enable);
-}
-
-void MSUSDAccel::reduction_write(mpz_t msu_in, int reduction_words_in) {
-    ocl.reduction_write(msu_in, reduction_words_in);
-}
-
-void MSUSDAccel::compute_job(mpz_t msu_out, mpz_t msu_in) {
+void MSUSDAccel::compute_job(uint64_t t_start,
+                               uint64_t t_final,
+                               mpz_t sq_in,
+                               mpz_t sq_out) {
+    squarer->pack(msu_in, t_start, t_final, sq_in);
     ocl.compute_job(msu_out, msu_in);
+
+    uint64_t t_final_out;
+    squarer->unpack(sq_out, &t_final_out, msu_out, WORD_LEN);
 }

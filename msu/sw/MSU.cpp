@@ -49,106 +49,29 @@ long timer_end(struct timespec start_time){
 }
 
 
-
-MSU::MSU(MSUDevice &_d, int _word_len,
-         int _redundant_elements, int _nonredundant_elements,
-         int _num_urams, mpz_t _modulus)
+MSU::MSU(MSUDevice &_d, int _mod_len, mpz_t _modulus)
     : device(_d) {
     unsigned long seed = 0;
     gmp_randinit_mt(rand_state);
     gmp_randseed_ui(rand_state, seed);
 
-    word_len                = _word_len;
-    bit_len                 = _word_len+1;
-    redundant_elements      = _redundant_elements;
-    nonredundant_elements   = _nonredundant_elements;
-    num_urams               = _num_urams;
+    mod_len                 = _mod_len;
 
-    int segment_elements    = nonredundant_elements / NUM_SEGMENTS;
-    int lut_num_elements    = (redundant_elements+EXTRA_ELEMENTS+
-                                 segment_elements*2);
-
-    if(num_urams > lut_num_elements) {
-        printf("ERROR: num_urams %d > lut_num_elements %d\n",
-               num_urams, lut_num_elements);
-        exit(1);
-    }
-        
-    uint64_t num_lut_entries = 1ULL << (word_len/2+1);
-    reduction_rows_per_table = num_lut_entries;
-    reduction_rows           = num_urams * reduction_rows_per_table;
-    reduction_xfers_per_row  = nonredundant_elements*word_len/MSU_WORD_LEN;
-    reduction_xfers          = reduction_xfers_per_row*reduction_rows;
-
-    // printf("num_urams               = %d\n", num_urams);
-    // printf("reduction_rows_per_table= %lu\n", reduction_rows_per_table);
-    // printf("reduction_rows          = %lu\n", reduction_rows);
-    // printf("reduction_xfers_per_row = %lu\n", reduction_xfers_per_row); 
-    // printf("reduction_xfers         = %lu\n", reduction_xfers);
-
-    num_elements  = redundant_elements + nonredundant_elements;
-    msu_words_in  = (T_LEN/MSU_WORD_LEN*2 + (nonredundant_elements+1)/2);
-    msu_words_out = (T_LEN/MSU_WORD_LEN + num_elements);
-
-    mpz_inits(A, modulus, msu_in, msu_out, reduced_out, NULL);
+    mpz_inits(sq_in, modulus, sq_out, NULL);
     mpz_set(modulus, _modulus);
     gmp_printf("Modulus is %Zd\n\n", modulus);
-
-    device.init(msu_words_in, msu_words_out);
 }
 
 MSU::~MSU() {
-    mpz_clears(A, modulus, msu_in, msu_out, reduced_out, NULL);
+    mpz_clears(sq_in, modulus, sq_out, NULL);
 }
 
-void MSU::load_reduction_tables(const char *path) {
-    char filename[255];
-    mpz_t red_in;
-    mpz_init(red_in);
-    
-    device.reduction_we(true);
-
-    for(int table = 0; table < num_urams; table++) {
-        printf("Writing reduction table %d..\n", table);
-        
-        sprintf(filename, "%s/reduction_lut_%03d.dat", path, table);
-        std::ifstream infile(filename);
-        if(!infile.is_open()) {
-            printf("Could not open file %s for reading\n", filename);
-            exit(1);
-        }
-        std::string line;
-        
-        for(unsigned i = 0; i < reduction_rows_per_table; i++) {
-            std::getline(infile, line);
-            mpz_set_str(red_in, line.c_str(), 16);
-            
-            //if(table == num_urams-1 && i > reduction_rows_per_table-4) {
-            //gmp_printf("red_in[%d][%d] is 0x%Zx\n", table, i, red_in);
-            //}
-            device.reduction_write(red_in, reduction_xfers_per_row);
-        }
-    }
-    // Let the data clock through
-    for(int i = 0; i < 1000; i++) {
-        device.clock_cycle();
-    }
-    device.reduction_we(false);
-    printf("Done writing tables\n");
-
-    for(int i = 0; i < 10; i++) {
-        device.clock_cycle();
-    }
-    
-    mpz_clear(red_in);
-}
-
-int MSU::run_fixed(uint64_t _t_start, uint64_t _t_final, mpz_t sq_in,
+// Run a job using the provided sq_in starting value.
+int MSU::run_fixed(uint64_t _t_start, uint64_t _t_final, mpz_t _sq_in,
                    bool check) {
     t_start = _t_start;
     t_final = _t_final;
-    mpz_set(A, sq_in);
-    pack_to_msu(msu_in, t_start, t_final, A);
+    mpz_set(sq_in, _sq_in);
     compute_job();
     if(check) {
         return(check_job());
@@ -156,12 +79,12 @@ int MSU::run_fixed(uint64_t _t_start, uint64_t _t_final, mpz_t sq_in,
     return 0;
 }
 
+// Run a job using a random sq_in starting value.
 int MSU::run_random(uint64_t _t_start, uint64_t _t_final, bool rrandom,
                     bool check) {
     t_start = _t_start;
     t_final = _t_final;
     prepare_random_job(rrandom);
-    pack_to_msu(msu_in, t_start, t_final, A);
     compute_job();
     if(check) {
         return(check_job());
@@ -169,51 +92,53 @@ int MSU::run_random(uint64_t _t_start, uint64_t _t_final, bool rrandom,
     return 0;
 }
 
+// Generate a random starting input
 void MSU::prepare_random_job(bool rrandom) {
-    int num_rand_bits = nonredundant_elements * word_len;
+    int num_rand_bits = mod_len;
     if(rrandom) {
         // Use a smaller bit size to avoid getting an input bigger than the
         // modulus
-        mpz_rrandomb(A, rand_state, num_rand_bits-2);
+        mpz_rrandomb(sq_in, rand_state, num_rand_bits-2);
     } else {
-        mpz_urandomb(A, rand_state, num_rand_bits);
+        mpz_urandomb(sq_in, rand_state, num_rand_bits);
     }
-    mpz_mod(A, A, modulus);
+    mpz_mod(sq_in, sq_in, modulus);
 }
 
+// Once the job parameters are configured compute_job will execute it on the
+// target.
 void MSU::compute_job() {
     struct timespec start_ts;
     start_ts = timer_start();
-    device.compute_job(msu_out, msu_in);
+    device.compute_job(t_start, t_final, sq_in, sq_out);
     compute_time = timer_end(start_ts);
 
-    unpack_from_msu(reduced_out, &t_final_out, msu_out);
     if(!quiet) {
-        gmp_printf("reduced_out is 0x%Zx\n", reduced_out);
+        gmp_printf("sq_out is 0x%Zx\n", sq_out);
     }
 }
 
+// Check the result by comparing it to the expected value as computed by
+// software.
 int MSU::check_job() {
     mpz_t expected;
     mpz_inits(expected, NULL);
-    compute_expected(expected);
+
+    mpz_set(expected, sq_in);
+    for(uint64_t i = t_start; i < t_final; i++) {
+        mpz_powm_ui(expected, expected, 2, modulus);
+        //gmp_printf("sq_in^2 is 0x%Zx\n", expected);
+    }       
 
     if(!quiet) {
-        gmp_printf("sq_in    is 0x%Zx\n", A);
+        gmp_printf("sq_in    is 0x%Zx\n", sq_in);
         gmp_printf("expected is 0x%Zx\n", expected);
-        gmp_printf("actual   is 0x%Zx\n", reduced_out);
+        gmp_printf("actual   is 0x%Zx\n", sq_out);
     }
 
-    // Check t_final output
-    int failures = 0;
-    if(t_final_out != t_final) {
-        printf("MISMATCH found in t_final - test Failed!\n");
-        printf("Expected: %lu\n", t_final);
-        printf("Received: %lu\n", t_final_out);
-        failures++;
-    }
     // Check product
-    if (mpz_cmp(expected, reduced_out) != 0) {
+    int failures = 0;
+    if (mpz_cmp(expected, sq_out) != 0) {
         printf("MISMATCH found - test Failed!\n");
         failures++;
     }
@@ -225,59 +150,4 @@ int MSU::check_job() {
 
     return(failures);
 }
-    
-void MSU::pack_to_msu(mpz_t msu_in,
-                      uint64_t t_start, uint64_t t_final, mpz_t A) {
-    mpz_set(msu_in, A);
-        
-    // t_final
-    bn_shl(msu_in, T_LEN);
-    mpz_add_ui(msu_in, msu_in, t_final);
-        
-    // t_start
-    bn_shl(msu_in, T_LEN);
-    mpz_add_ui(msu_in, msu_in, t_start);
-}
 
-void MSU::unpack_from_msu(mpz_t product,
-                          uint64_t *t_final, mpz_t msu_out) {
-    *t_final = mpz_get_ui(msu_out);
-    bn_shr(msu_out, T_LEN);
-
-    // Reduce the polynomial from redundant form
-    reduce_polynomial(product, msu_out, MSU_WORD_LEN);
-}
-
-void MSU::compute_expected(mpz_t expected) {
-    mpz_set(expected, A);
-    for(uint64_t i = t_start; i < t_final; i++) {
-        mpz_powm_ui(expected, expected, 2, modulus);
-        //gmp_printf("A^2 is 0x%Zx\n", expected);
-    }       
-}
-
-void MSU::reduce_polynomial(mpz_t result,
-                            mpz_t poly, int padded_word_len) {
-    uint64_t mask = (1ULL<<padded_word_len)-1;
-        
-    // Combine all of the coefficients
-    mpz_t tmp;
-    mpz_init(tmp);
-    mpz_set_ui(result, 0);
-    int count = 0;
-    while(mpz_cmp_ui(poly, 0)) {
-        uint64_t coeff = mpz_get_ui(poly);
-        coeff &= mask;
-        bn_shr(poly, padded_word_len);
-            
-        mpz_set_ui(tmp, coeff);
-        bn_shl(tmp, word_len*count);
-        mpz_add(result, result, tmp);
-        count++;
-    }
-    mpz_clear(tmp);
-
-    // Reduce mod M
-    mpz_mod(result, result, modulus);
-    //gmp_printf("MSU result is 0x%Zx\n", result);
-}

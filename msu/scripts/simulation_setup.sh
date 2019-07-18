@@ -7,7 +7,7 @@ then
     echo "Running Ubuntu setup..."
     
     sudo apt update -y
-    sudo apt install -y python3 libgmp-dev
+    sudo apt install -y python3 libgmp-dev gtkwave
 
     wget https://www.veripool.org/ftp/verilator-4.016.tgz
     sudo apt-get install -y make autoconf g++ flex bison
@@ -21,5 +21,5 @@ else
     # Assume CentOS
     echo "Running CentOS setup..."
     sudo yum update -y
-    sudo yum install -y gmp-devel verilator python36
+    sudo yum install -y gmp-devel verilator python36 gtkwave
 fi

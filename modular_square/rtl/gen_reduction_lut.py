@@ -27,7 +27,6 @@ NONREDUNDANT_ELEMENTS = 8
 NUM_SEGMENTS          = 4
 WORD_LEN              = 16
 EXTRA_ELEMENTS        = 2
-NUM_URAM              = 4
 
 # TODO - we probably don't need these hardcoded values anymore
 if (NONREDUNDANT_ELEMENTS == 128):
@@ -38,16 +37,16 @@ else:
 try:
    opts, args = getopt.getopt(sys.argv[1:],"hM:r:n:w:",           \
                               ["modulus=","redundant=",           \
-                               "nonredundant=", "wordlen=", "urams="])
+                               "nonredundant=", "wordlen="])
 except getopt.GetoptError:
    print ('gen_reduction_lut.py -M <modulus> -r <num redundant>', \
-         '-nr <num nonredundant> -wl <word length> -u <num_uram>')
+         '-nr <num nonredundant> -wl <word length>')
    sys.exit(2)
 
 for opt, arg in opts:
    if opt == '-h':
       print ('gen_reduction_lut.py -M <modulus> -r <num redundant>', \
-            '-nr <num nonredundant> -wl <word length> -u <num_uram>')
+            '-nr <num nonredundant> -wl <word length>')
       sys.exit()
    elif opt in ("-M", "--modulus"):
       M = int(arg)
@@ -57,8 +56,6 @@ for opt, arg in opts:
       NONREDUNDANT_ELEMENTS = int(arg)
    elif opt in ("-w", "--wordlen"):
       WORD_LEN = int(arg)
-   elif opt in ("-u", "--urams"):
-      NUM_URAM = int(arg)
 
 print ()
 print ('Parameter Values')
@@ -80,11 +77,6 @@ LUT_NUM_ELEMENTS      = REDUNDANT_ELEMENTS + (SEGMENT_ELEMENTS*2) + \
 LOOK_UP_WIDTH         = WORD_LEN // 2
 LUT_SIZE              = 2**LOOK_UP_WIDTH
 LUT_WIDTH             = WORD_LEN * NONREDUNDANT_ELEMENTS;
-
-# Sanitize URAM and BRAM counts
-if NUM_URAM > LUT_NUM_ELEMENTS - 1:
-   NUM_URAM           = LUT_NUM_ELEMENTS - 1
-NUM_BRAM              = LUT_NUM_ELEMENTS - NUM_URAM
 
 ################################################################################
 # Compute the reduction tables
@@ -127,7 +119,7 @@ for i in range (LUT_NUM_ELEMENTS):
 
 f = open('reduction_lut.sv', 'w')
 
-emit = \
+top = \
 '''/*******************************************************************************
   Copyright 2019 Supranational LLC
 
@@ -151,7 +143,6 @@ module reduction_lut
      parameter int NUM_SEGMENTS          = 4,
      parameter int WORD_LEN              = 16,
      parameter int BIT_LEN               = 17,
-     parameter int DIN_LEN               = 8,
 
      parameter int NUM_ELEMENTS          = REDUNDANT_ELEMENTS+
                                            NONREDUNDANT_ELEMENTS,
@@ -168,176 +159,49 @@ module reduction_lut
     input  logic [LOOK_UP_WIDTH:0]  lut_addr[LUT_NUM_ELEMENTS],
     input  logic                    shift_high,
     input  logic                    shift_overflow,
-    output logic [BIT_LEN-1:0]      lut_data[NUM_ELEMENTS][LUT_NUM_ELEMENTS],
-'''
-f.write(emit)
-
-if NUM_URAM == 0:
-   f.write("/* verilator lint_off UNUSED */")
-
-emit = \
-'''
-    input                           we,
-    input [DIN_LEN-1:0]             din,
-    input                           din_valid
-'''
-f.write(emit)
-
-if NUM_URAM == 0:
-   f.write("/* verilator lint_on UNUSED */")
-
-emit = \
-'''
+    output logic [BIT_LEN-1:0]      lut_data[NUM_ELEMENTS][LUT_NUM_ELEMENTS]
    );
 
    // There is twice as many entries due to low and high values
    localparam int NUM_LUT_ENTRIES   = 2**(LOOK_UP_WIDTH+1);
    localparam int LUT_WIDTH         = WORD_LEN * NONREDUNDANT_ELEMENTS;
+   localparam int FULL_WIDTH        = WORD_LEN * NUM_ELEMENTS;
 
-   localparam int NUM_URAM          = %(NUM_URAM)s;
-   localparam int NUM_BRAM          = LUT_NUM_ELEMENTS-NUM_URAM;
-   localparam int XFERS_PER_URAM    = (LUT_WIDTH*NUM_LUT_ENTRIES)/DIN_LEN;
-
-   logic [LUT_WIDTH-1:0]  lut_read_data[LUT_NUM_ELEMENTS];
-'''
-f.write(emit % {'NUM_URAM':NUM_URAM})
-
-##########################################################################
-# URAM Only
-##########################################################################
-
-if NUM_URAM > 0:
-   f.write("   logic [LUT_WIDTH-1:0]  lut_read_data_uram[NUM_URAM];")
-
-   emit = \
-'''       
-   logic [NUM_URAM-1:0]   we_uram;
-   genvar i;
-   generate
-      for(i = 0; i < NUM_URAM; i++) begin : urams
-         uram_wide #(.DATA_LEN(NONREDUNDANT_ELEMENTS*WORD_LEN),
-                     .ADDR_LEN(LOOK_UP_WIDTH+1),
-                     .DIN_LEN(DIN_LEN)
-                     )
-         u1(.clk(clk), 
-            .we(we_uram[i] && we), 
-            .din(din),
-            .din_valid(din_valid),
-            .addr(lut_addr[i]),
-            .dout(lut_read_data_uram[i]));
-      end
-   endgenerate
-
-   // Enable writing data into the URAMs
-   logic [$clog2(XFERS_PER_URAM):0] write_uram_xfers;
-   always_ff @(posedge clk) begin
-      if(!we) begin
-         we_uram             <= {{(NUM_URAM-1){1'b0}}, 1'b1};
-         write_uram_xfers    <= XFERS_PER_URAM[$clog2(XFERS_PER_URAM):0];
-      end else if(|we_uram && din_valid) begin
-         if(write_uram_xfers == 1) begin
-            we_uram          <= we_uram << 1;
-            write_uram_xfers <= XFERS_PER_URAM[$clog2(XFERS_PER_URAM):0];
-         end else begin
-            write_uram_xfers <= write_uram_xfers - 1;
-         end
-      end
-   end
-'''
-   f.write(emit)
-
-   
-##########################################################################
-# BRAM Only
-##########################################################################
-
-if NUM_BRAM > 0:
-   f.write("   logic [LUT_WIDTH-1:0]  lut_read_data_bram[NUM_BRAM];")
-
-   emit = \
-'''
+   logic [FULL_WIDTH-1:0] lut_read_data[LUT_NUM_ELEMENTS];
    logic [BIT_LEN-1:0]    lut_output[NUM_ELEMENTS][LUT_NUM_ELEMENTS];
 
-   // Delay to align with data from memory
-   logic shift_high_1d;
-   logic shift_overflow_1d;
-
-   always_ff @(posedge clk) begin
-      shift_high_1d     <= shift_high;
-      shift_overflow_1d <= shift_overflow;
-   end
 '''
-   f.write(emit)
+f.write(top)
 
-   block_str = '   (* rom_style = "block" *) logic [LUT_WIDTH-1:0] lut_{0:03d}[NUM_LUT_ENTRIES];\n'
+block_str = '   (* rom_style = "block" *) logic [LUT_WIDTH-1:0] lut_{0:03d}[NUM_LUT_ENTRIES];\n'
 
-   for i in range (NUM_BRAM):
-      f.write(block_str.format(i+NUM_URAM))
+for i in range (LUT_NUM_ELEMENTS):
+   f.write(block_str.format(i))
 
-   read_str = '      $readmemh("reduction_lut_{0:03d}.dat", lut_{0:03d});\n'
+read_str = '      $readmemh("reduction_lut_{0:03d}.dat", lut_{0:03d});\n'
 
-   f.write('\n   initial begin\n')
-   for i in range (NUM_BRAM):
-      f.write(read_str.format(i+NUM_URAM))
-   f.write('   end\n')
+f.write('\n   initial begin\n')
+for i in range (LUT_NUM_ELEMENTS):
+   f.write(read_str.format(i))
+f.write('   end\n')
 
-   #assign_str = '      lut_read_data[{0:d}] <= lut_{0:03d}[lut_addr[{0:d}]][LUT_WIDTH-1:0];\n'
-   assign_str = '      lut_read_data_bram[{0:d}] <= lut_{1:03d}[lut_addr[{1:d}]];\n'
-   f.write('\n   always_ff @(posedge clk) begin\n')
-   for i in range (NUM_BRAM):
-      f.write(assign_str.format(i, i+NUM_URAM))
-   f.write('   end\n')
+assign_str = '      lut_read_data[{0:d}] = {{{{FULL_WIDTH-LUT_WIDTH{{1\'b0}}}},\n\
+                           lut_{0:03d}[lut_addr[{0:d}]][LUT_WIDTH-1:0]}};\n'
+f.write('\n   always_comb begin\n')
+for i in range (LUT_NUM_ELEMENTS):
+   f.write(assign_str.format(i))
+f.write('   end\n')
 
-##########################################################################
-# Mixed URAM/BRAM
-##########################################################################
-   
-emit = \
+bottom = \
 '''
-
-   // Read data out of the memories
-   always_comb begin
-'''
-f.write(emit)
-
-emit = \
-'''
-      for (int k=0; k<NUM_URAM; k=k+1) begin
-         lut_read_data[k]          = lut_read_data_uram[k];
-      end
-'''
-if NUM_URAM > 0:
-   f.write(emit)
-
-emit = \
-'''
-      for (int k=0; k<NUM_BRAM; k=k+1) begin
-         lut_read_data[k+NUM_URAM] = lut_read_data_bram[k];
-      end      
-'''
-if NUM_BRAM > 0:
-   f.write(emit)
-
-   
-emit = \
-'''
-   end
-
    always_comb begin
       for (int k=0; k<LUT_NUM_ELEMENTS; k=k+1) begin
-         for (int l=NONREDUNDANT_ELEMENTS; l<NUM_ELEMENTS; l=l+1) begin
-            lut_output[l][k] = '0;
-         end
-      end
-      for (int k=0; k<LUT_NUM_ELEMENTS; k=k+1) begin
-         for (int l=0; l<NONREDUNDANT_ELEMENTS+1; l=l+1) begin
+         for (int l=0; l<NUM_ELEMENTS; l=l+1) begin
             // TODO - should be unique, fails when in reset
-            if (shift_high_1d) begin
-               if (l < NONREDUNDANT_ELEMENTS) begin
-                  lut_output[l][k][BIT_LEN-1:LOOK_UP_WIDTH] =
-                     {{(BIT_LEN-WORD_LEN){1'b0}},
-                      lut_read_data[k][(l*WORD_LEN)+:LOOK_UP_WIDTH]};
-               end
+            if (shift_high) begin
+               lut_output[l][k][BIT_LEN-1:LOOK_UP_WIDTH] =
+                  {{(BIT_LEN-WORD_LEN){1\'b0}},
+                   lut_read_data[k][(l*WORD_LEN)+:LOOK_UP_WIDTH]};
 
                if (l == 0) begin
                   lut_output[l][k][LOOK_UP_WIDTH-1:0] = \'0;
@@ -347,7 +211,7 @@ emit = \
                 lut_read_data[k][((l-1)*WORD_LEN)+LOOK_UP_WIDTH+:LOOK_UP_WIDTH];
                end
             end
-            else if (shift_overflow_1d) begin
+            else if (shift_overflow) begin
                if (l == 0) begin
                   lut_output[l][k] = \'0;
                end
@@ -358,22 +222,20 @@ emit = \
                end
             end
             else begin
-               if (l < NONREDUNDANT_ELEMENTS) begin
-                  lut_output[l][k] =
-                     {{(BIT_LEN-WORD_LEN){1\'b0}},
-                      lut_read_data[k][(l*WORD_LEN)+:WORD_LEN]};
-               end
+               lut_output[l][k] =
+                  {{(BIT_LEN-WORD_LEN){1\'b0}},
+                   lut_read_data[k][(l*WORD_LEN)+:WORD_LEN]};
             end
          end
       end
    end
 
    // Need above loops in combo block for Verilator to process
-   always_comb begin
-      lut_data = lut_output;
+   always_ff @(posedge clk) begin
+      lut_data <= lut_output;
    end
 endmodule
 '''
 
-f.write(emit)
+f.write(bottom)
 f.close()

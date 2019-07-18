@@ -19,7 +19,7 @@
 
 #include <verilated.h>
 #include <MSU.hpp>
-#include <Vmsu_tb.h>
+#include <Vtb.h>
 
 // If "verilator --trace" is used, include the tracing class
 #if VM_TRACE
@@ -30,27 +30,37 @@ extern vluint64_t *main_time_singleton;
 
 class MSUVerilator : public MSUDevice {
 public:
-    Vmsu_tb *tb;
+    Vtb *tb;
     VerilatedVcdC* tfp;
 
     // Current simulation time (64-bit unsigned)
     vluint64_t main_time = 0;
 
+    // Watchdog cycle count
+    uint64_t watchdog;
+
+    mpz_t msu_in;
+    mpz_t msu_out;
     int msu_words_in;
     int msu_words_out;
     
     MSUVerilator(int argc, char** argv);
     virtual ~MSUVerilator();
     
-    virtual void init(int _msu_words_in, int _msu_words_out) {
-        msu_words_in = _msu_words_in;
-        msu_words_out = _msu_words_out;
-    }
+    virtual void init(MSU *_msu, Squarer *_squarer);
     virtual void reset();
     virtual void clock_cycle();
-    virtual void reduction_we(bool enable);
-    virtual void reduction_write(mpz_t msu_in, int reduction_words_in);
-    virtual void compute_job(mpz_t msu_out, mpz_t msu_in);
+    virtual void compute_job(uint64_t t_start,
+                             uint64_t t_final,
+                             mpz_t sq_in,
+                             mpz_t sq_out);
+
+    void axi_write(mpz_t data, int words);
+    void axi_read(mpz_t data, int words);
+
+    void pet() {
+        watchdog = 0;
+    }
 };
 
 #endif

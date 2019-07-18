@@ -24,21 +24,17 @@ module modular_square_8_cycles
      parameter int NUM_SEGMENTS          = 4,
      parameter int BIT_LEN               = 17,
      parameter int WORD_LEN              = 16,
-     parameter int REDUCTION_DIN_LEN     = 32,
 
      parameter int NUM_ELEMENTS          = REDUNDANT_ELEMENTS +
                                            NONREDUNDANT_ELEMENTS
     )
    (
     input logic                   clk,
-    input logic                   rst,
+    input logic                   reset,
     input logic                   start,
     input logic [BIT_LEN-1:0]     sq_in[NUM_ELEMENTS],
     output logic [BIT_LEN-1:0]    sq_out[NUM_ELEMENTS],
-    output logic                  valid,
-    input                         reduction_we,
-    input [REDUCTION_DIN_LEN-1:0] reduction_din,
-    input                         reduction_din_valid
+    output logic                  valid
    );
 
    localparam int SEGMENT_ELEMENTS    = int'(NONREDUNDANT_ELEMENTS /
@@ -193,7 +189,7 @@ module modular_square_8_cycles
       mul_result_shift[1]         = 1'b0;
       mul1_first_select           = 1'b0;
 
-      if (rst) begin
+      if (reset) begin
          next_cycle               = '0;
          next_cycle[IDLE]         = 1'b1;
          out_valid                = 1'b0;
@@ -303,7 +299,7 @@ module modular_square_8_cycles
    // Drive output valid signal
    // Flop incoming start signal and data
    always_ff @(posedge clk) begin
-      if (rst) begin
+      if (reset) begin
          valid                       <= 1'b0;
          start_d1                    <= 1'b0;
       end
@@ -706,18 +702,14 @@ module modular_square_8_cycles
    reduction_lut #(.REDUNDANT_ELEMENTS(REDUNDANT_ELEMENTS),
                    .NONREDUNDANT_ELEMENTS(NONREDUNDANT_ELEMENTS),
                    .NUM_SEGMENTS(NUM_SEGMENTS),
-                   .WORD_LEN(WORD_LEN),
-                   .DIN_LEN(REDUCTION_DIN_LEN)
+                   .WORD_LEN(WORD_LEN)
                   )
       reduction_lut (
                      .clk(clk),
                      .shift_high(curr_lookup_shift),
                      .shift_overflow(curr_overflow),
                      .lut_addr(lut_addr),
-                     .lut_data(lut_data),
-                     .we(reduction_we),
-                     .din(reduction_din),
-                     .din_valid(reduction_din_valid)
+                     .lut_data(lut_data)
                     );
 
    // Accumulate reduction lut values with running total

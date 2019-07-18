@@ -19,19 +19,25 @@ help::
 ############################################################################
 # Multiplier configuration
 ############################################################################
+include ../../multiplier.mk
 
-WORD_LEN               = 16
-NONREDUNDANT_ELEMENTS ?= 64
-NUM_URAMS             ?= 0
-
-HOST_FLAGS_HW_EMU  = -e -f 10 -u $(NUM_URAMS)
-HOST_FLAGS_FPGA    = -e -f 10 -u $(NUM_URAMS)
+HOST_FLAGS_HW_EMU  = -e -f 1
+HOST_FLAGS_FPGA    = -e -f 10
 
 include ../../modulus.mk
 
 ############################################################################
 # Synthesis directives
 ############################################################################
+
+ifeq ($(SIMPLE_SQ), 1)
+LDCLFLAGS += -DSIMPLE_SQ=1
+endif
+LDCLFLAGS += -DMOD_LEN_DEF=$(MOD_LEN)
+LDCLFLAGS += -DMODULUS_DEF=$(MOD_LEN)\'d$(MODULUS)
+LDCLFLAGS += -DMSU_SQ_IN_BITS_DEF=$(SQ_IN_BITS)
+LDCLFLAGS += -DMSU_SQ_OUT_BITS_DEF=$(SQ_OUT_BITS)
+
 
 LDCLFLAGS += --xp "vivado_prop:run.pfm_dynamic_vdf_1_0_synth_1.\
                    {STEPS.SYNTH_DESIGN.ARGS.FANOUT_LIMIT}={400}"
@@ -85,7 +91,10 @@ HOST_SRCS         += $(HOST_SRC_DIR)/main.cpp
 
 CXXFLAGS          += -I$(HOST_SRC_DIR) -DFPGA=1 \
 	             -DMODULUS=\"$(MODULUS)\" \
-                     -DNONREDUNDANT_ELEMENTS=$(NONREDUNDANT_ELEMENTS)
+                     -DMOD_LEN=$(MOD_LEN)
+ifeq ($(SIMPLE_SQ), 1)
+CXXFLAGS          += -DSIMPLE_SQ=1
+endif
 
 TARGETS           := hw
 TARGET            := $(TARGETS)
@@ -179,8 +188,18 @@ $(BINARY_CONTAINER_AWS): $(BINARY_CONTAINER)
 
 # Configure MSU parameters. These are included through vdf_kernel.sv
 msuconfig.vh:
-	echo "\`define NONREDUNDANT_ELEMENTS_DEF $(NONREDUNDANT_ELEMENTS)" \
+	echo "\`define SQ_IN_BITS_DEF $(SQ_IN_BITS)" \
               > msuconfig.vh
+	echo "\`define SQ_OUT_BITS_DEF $(SQ_OUT_BITS)" \
+              >> msuconfig.vh
+	echo "\`define MODULUS_DEF $(MOD_LEN)'d$(MODULUS)" \
+              >> msuconfig.vh
+	echo "\`define MOD_LEN_DEF $(MOD_LEN)" \
+              >> msuconfig.vh
+ifeq ($(SIMPLE_SQ), 1)
+	echo "\`define SIMPLE_SQ $(SIMPLE_SQ)" \
+              >> msuconfig.vh
+endif
 
 # Generate the LUTs. reduction_lut_000.dat will be present for any bitwidth.
 $(BINARY_CONTAINER_XO): mem/reduction_lut_000.dat
@@ -189,8 +208,7 @@ mem/reduction_lut_000.dat:
 	mkdir -p mem
 	cd mem && $(MODSQR_DIR)/rtl/gen_reduction_lut.py \
                           --nonredundant $(NONREDUNDANT_ELEMENTS) \
-                          --modulus $(MODULUS) \
-                          --urams $(NUM_URAMS)
+                          --modulus $(MODULUS)
 
 sdaccel.ini:
 ifeq ($(TRACE), 1)
