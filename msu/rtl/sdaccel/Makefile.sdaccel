@@ -16,42 +16,23 @@ help::
 	$(ECHO) ""
 
 
-# Model configuration
+############################################################################
+# Multiplier configuration
+############################################################################
+
 WORD_LEN               = 16
-NONREDUNDANT_ELEMENTS ?= 8
+NONREDUNDANT_ELEMENTS ?= 64
 NUM_URAMS             ?= 0
 
-MODULUS               := $(shell python3 -c \
-	  "import random; \
-           bits = $(NONREDUNDANT_ELEMENTS)*$(WORD_LEN); \
-	   M = random.getrandbits(bits); \
-           print(M)")
+HOST_FLAGS_HW_EMU  = -e -f 10 -u $(NUM_URAMS)
+HOST_FLAGS_FPGA    = -e -f 10 -u $(NUM_URAMS)
 
-HOST_FLAGS_HW_EMU  = -e -f 4 -u $(NUM_URAMS)
-HOST_FLAGS_FPGA    = -e -f 4 -u $(NUM_URAMS)
+include ../../modulus.mk
 
-# 128b
-#NONREDUNDANT_ELEMENTS  = 8
-#MODULUS                = 302934307671667531413257853548643485645
-
-# 256b
-#NONREDUNDANT_ELEMENTS  = 16
-#MODULUS                = 22399791080850639135831474318415907634282253441172412823115487127449803544730
-
-# 512b
-#NONREDUNDANT_ELEMENTS  = 32
-#MODULUS                = 6489662188004289912380470564448077957325054535910000462604166663459673710886837850185567098610688907939251192940184027313309919696320700640064979438888128
-
-# 1024b
-NONREDUNDANT_ELEMENTS  = 64
-MODULUS                = 435498004454960311370317052397000844802649144205780523913417362625407607066231475209709961473477443808083986632633065072597378881054561793869773671502511117663614834848276234008576433331085414399994150596781014081314102597766163665183768312980812151246986379323231704775209109465985927509514160947756090729
-
-# 2048b
-#NONREDUNDANT_ELEMENTS  = 128
-#MODULUS                = 27271074554676503519391853169046884655581831532712325396502630600760020898632119957064692546985308544150784261990781284771270896020978275111752108656098548870476692410787307573844664727606744662496584291979219988855628209868679955413354284586208135049013661377422927304865632743549276675135791608153703621521387919523133145389506743398898429233228241599150945874146271663618317884751301381861848237319575680595184886001249116411859073517763435609872023182784481435349116944758451761798946340486903179689195662213716695366603101279184654887537500992719023646034937427991533743798093191230930642530828318735313860873305
-
+############################################################################
 # Synthesis directives
-#SRC_DIR=/data/examples/getting_started/rtl_kernel/rtl_vdf_newred
+############################################################################
+
 LDCLFLAGS += --xp "vivado_prop:run.pfm_dynamic_vdf_1_0_synth_1.\
                    {STEPS.SYNTH_DESIGN.ARGS.FANOUT_LIMIT}={400}"
 LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
@@ -76,16 +57,18 @@ LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
                    {AggressiveExplore}"
 
 # Add in additional constraints, such as pblocks
-# This places all performance critical logic in SLR2 which is
+# This constraint places all performance critical logic in SLR2, which is
 # free of shell logic. 
 PLACER_CONSTRS     = $(realpath ../placer_constrs.xdc)
 LDCLFLAGS += --xp "vivado_prop:run.impl_1.{STEPS.PLACE_DESIGN.TCL.PRE}=\
                    $(PLACER_CONSTRS)"
 
-LDCLFLAGS += --kernel_frequency 158
+LDCLFLAGS += --kernel_frequency 161
 
-LDCLFLAGS += --report system
 
+############################################################################
+# AWS/SDAccel configuration
+############################################################################
 
 # Points to Utility Directory
 COMMON_REPO        = $(AWS_FPGA_REPO_DIR)/SDAccel/examples/xilinx
@@ -136,27 +119,38 @@ LDFLAGS           += -lrt -lstdc++
 CLFLAGS           += -t $(TARGET) --platform $(DEVICE) 
 CLFLAGS           += --save-temps --temp_dir $(BUILD_DIR) 
 
-# Enable tracing
-# TODO - for some reason the model fails when tracing is off
+# Enable waveform tracing
 TRACE              = 1
 CLFLAGS           += -g
 
+# Gather files to copy to an FPGA enabled server
+F1_FILE            = to_f1.tar.gz
+
+# Host side executable name
 EXECUTABLE         = host
 
 EMCONFIG_DIR       = $(XCLBIN)/$(DSA)
 
-BINARY_CONTAINERS += $(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin
-BINARY_CONTAINER_vdf_OBJS += $(XCLBIN)/vdf.$(TARGET).$(DSA).xo
+BINARY_CONTAINER     = $(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin
+BINARY_CONTAINER_XO  = $(XCLBIN)/vdf.$(TARGET).$(DSA).xo
+BINARY_CONTAINER_AWS = vdf.$(TARGET).$(DSA).awsxclbin
 
 CP = cp -rf
 
+S3_BUCKET          = vdfsn
+
+
+############################################################################
+# Rules
+############################################################################
+
 .PHONY: all clean cleanall docs emconfig
-all: check-devices $(EXECUTABLE) $(BINARY_CONTAINERS) emconfig
+all: check-devices $(EXECUTABLE) $(BINARY_CONTAINER) emconfig
 
 .PHONY: exe
 exe: $(EXECUTABLE)
 
-# Gather source files needed to run sdx
+# Gather source files needed to run the sdx GUI
 sdx:
 	mkdir -p                          sdx/src
 	cp $(HOST_SRCS)                   sdx/src
@@ -166,14 +160,31 @@ sdx:
 	cp $(HOST_SRC_DIR)/*.hpp          sdx/src
 	cp mem/*.dat                      sdx/src
 
+# Gather files needed to run on the FPGA
+.PHONY: to_f1
+to_f1: $(F1_FILE)
+
+$(F1_FILE): $(EXECUTABLE) $(BINARY_CONTAINER_AWS)
+	tar czvf $@ $^
+
+# Register the new bitstream
+# This only works on an AWS host
+$(BINARY_CONTAINER_AWS): $(BINARY_CONTAINER)
+	cd $(XCLBIN)
+	$(SDACCEL_DIR)/tools/create_sdaccel_afi.sh \
+	   -xclbin=$(BINARY_CONTAINER) \
+           -o=vdf.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0 \
+	   -s3_bucket=$(S3_BUCKET) -s3_dcp_key=dcp -s3_logs_key=logs
+	cat *afi_id.txt
+
 # Configure MSU parameters. These are included through vdf_kernel.sv
 msuconfig.vh:
 	echo "\`define NONREDUNDANT_ELEMENTS_DEF $(NONREDUNDANT_ELEMENTS)" \
               > msuconfig.vh
 
 # Generate the LUTs. reduction_lut_000.dat will be present for any bitwidth.
-$(BINARY_CONTAINER_vdf_OBJS): mem/reduction_lut_000.dat
-$(BINARY_CONTAINER_vdf_OBJS): msuconfig.vh
+$(BINARY_CONTAINER_XO): mem/reduction_lut_000.dat
+$(BINARY_CONTAINER_XO): msuconfig.vh
 mem/reduction_lut_000.dat: 
 	mkdir -p mem
 	cd mem && $(MODSQR_DIR)/rtl/gen_reduction_lut.py \
@@ -190,7 +201,7 @@ ifeq ($(TRACE), 1)
 	echo "timeline_trace=true" >> sdaccel.ini
 	echo "device_profile=true" >> sdaccel.ini
 
-$(BINARY_CONTAINER_vdf_OBJS): sdaccel.ini
+$(BINARY_CONTAINER_XO): sdaccel.ini
 else
 	rm -f sdaccel.ini
 endif
@@ -204,7 +215,7 @@ $(XCLBIN)/vdf.$(TARGET).$(DSA).xo:
 
 
 # Building kernel
-$(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin: $(BINARY_CONTAINER_vdf_OBJS)
+$(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin: $(BINARY_CONTAINER_XO)
 	mkdir -p $(XCLBIN)
 	$(XOCC) $(CLFLAGS) $(LDCLFLAGS) \
              -lo $(XCLBIN)/vdf.$(TARGET).$(DSA).xclbin \

@@ -190,7 +190,7 @@ make clean
 make hw
 ```
 
-Once synthesis successfully completes you can register the new image. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdf'. Once that is done run the following:
+Once synthesis successfully completes you can register the new image. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdfsn' but you will need to change this to match your bucket name. Once that is done run the following:
 
 ```
 # Configure AWS credentials. You should only need to do this once on a given
@@ -202,19 +202,18 @@ Once synthesis successfully completes you can register the new image. Follow the
 aws configure
 
 # Register the new bitstream
-cd obj/xclbin
-KERNEL=vdf
-BUCKET=vdf
-$SDACCEL_DIR/tools/create_sdaccel_afi.sh -xclbin=$KERNEL.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0.xclbin -o=$KERNEL.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0 -s3_bucket=$BUCKET -s3_dcp_key=dcp -s3_logs_key=logs
-cat *afi_id.txt
+# Update S3_BUCKET in Makefile.sdaccel to reflect the name of your bucket.
+cd msu/rtl/sdaccel
+make to_f1
 
 # Check status using the afi_id from the last step. It should say 
 # pending for about 30 minutes, then available.
+cat *afi_id.txt
 aws ec2 describe-fpga-images --fpga-image-ids afi-XXXXXXXXXXXX
 
 # Copy the required files to an FPGA enabled host for execution:
 HOST=xxxx # Your F1 hostname here
-scp ../host vdf.hw.xilinx_aws-vu9p-f1-04261818_dynamic_5_0.awsxclbin centos@$HOST:.
+scp obj/to_f1.tar.gz centos@$HOST:.
 ```
 
 ## FPGA Execution
@@ -231,6 +230,7 @@ EOF
 
 Execute the host driver code. This will automatically load the image referenced by the awsxclbin file onto the FPGA. 
 ```
+tar xf to_f1.tar.gz
 sudo su
 source $AWS_FPGA_REPO_DIR/sdaccel_runtime_setup.sh 
 

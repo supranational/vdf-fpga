@@ -11,7 +11,7 @@ else
     echo "Setting up an on-premise environment..."
     
     export XILINX_SDX=/tools/Xilinx/SDx/2018.3
-    PATH=$PATH:$XILINX_SDX
+    PATH=$PATH:$XILINX_SDX/bin
     export AWS_FPGA_REPO_DIR=~/src/project_data/aws-fpga
 fi
 

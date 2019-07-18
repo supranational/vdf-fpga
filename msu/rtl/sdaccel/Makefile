@@ -18,6 +18,11 @@ OBJ=obj
 
 # Build the simulation model plus the host. To rebuild the RTL
 # after making changes you must 'make clean' first.
+hw_emu_random:
+	mkdir -p $(OBJ)
+	RANDOM_MODULUS=1 \
+            $(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw_emu check
+
 hw_emu:
 	mkdir -p $(OBJ)
 	time $(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw_emu check
@@ -30,6 +35,10 @@ host:
 hw:
 	mkdir -p $(OBJ)
 	time $(MAKE) -C $(OBJ) -f ../Makefile.sdaccel TARGETS=hw all
+
+# Gather files to copy to F1 machine
+to_f1:
+	$(MAKE) -C $(OBJ) -f ../Makefile.sdaccel to_f1
 
 # Gather the sources needed for sdx for interactive hw emulation debug
 sdx:

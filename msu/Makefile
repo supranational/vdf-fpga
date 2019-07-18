@@ -19,8 +19,23 @@ SDACCEL_DIR=rtl/sdaccel
 all:
 	$(MAKE) -C rtl regression
 
+judge:
+	$(MAKE) clean
+
+	@echo "Running functional tests..."
+	$(MAKE) -C rtl judge
+
+	@echo "Running hardware emulation..."
+	$(MAKE) hw_emu_random
+
+	@echo "Synthesizing..."
+	$(MAKE) hw
+
 hw_emu:
 	$(MAKE) -C $(SDACCEL_DIR) hw_emu
+
+hw_emu_random:
+	$(MAKE) -C $(SDACCEL_DIR) hw_emu_random
 
 hw:
 	$(MAKE) -C $(SDACCEL_DIR) hw
