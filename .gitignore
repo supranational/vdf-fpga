@@ -12,13 +12,20 @@
 **vivado.log
 **vivado_pid*.str
 
+msu/rtl/vivado_ozturk/msu
+msu/rtl/vivado_ozturk/test.txt
 msu/rtl/vivado_ozturk/msu.cache
 msu/rtl/vivado_ozturk/msu.hw
 msu/rtl/vivado_ozturk/msu.ip_user_files
 msu/rtl/vivado_ozturk/msu.runs
-msu/rtl/vivado_ozturk/msu.srcs
+msu/rtl/vivado_ozturk/msu.srcs/mem
+msu/rtl/vivado_ozturk/msu.sim
+
+msu/rtl/vivado_simple/msu
+msu/rtl/vivado_simple/test.txt
 msu/rtl/vivado_simple/msu.cache
 msu/rtl/vivado_simple/msu.hw
 msu/rtl/vivado_simple/msu.ip_user_files
 msu/rtl/vivado_simple/msu.runs
-msu/rtl/vivado_simple/msu.srcs
+msu/rtl/vivado_simple/msu.srcs/mem
+msu/rtl/vivado_simple/msu.sim

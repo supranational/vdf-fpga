@@ -22,12 +22,12 @@ We assume some familiarity with the AWS environment. To instantiate a new AWS ho
 1. Choose FPGA Developer AMI
 1. For instance type choose z1d.2xlarge for development, f1.2xlarge for FPGA enabled, then Review and Launch
 1. For configuration of the host we recommend:
-  - Increase root disk space by about 20GB for an f1.2xlarge, 60GB for a z1d.2xlarge.
-  - Add a descriptive tag to help track instances and volumes
+    1. Increase root disk space by about 20GB for an f1.2xlarge, 60GB for a z1d.2xlarge.
+    1. Add a descriptive tag to help track instances and volumes
 1. Launch the instance
 1. In the EC2 Instances page, select the instance and choose Actions->Connect. This will tell you the instance hostname that you can ssh to. 
-  - Note that for the FPGA Developer AMI the username will be 'centos'
-  - Log in with `ssh centos@HOST`
+    1. Note that for the FPGA Developer AMI the username will be 'centos'
+    1. Log in with `ssh centos@HOST`
 
 You may find it convenient to install additional ssh keys for github, etc. 
 
@@ -86,12 +86,12 @@ You can enable a **faster run** by relaxing the kernel frequency (search for ker
 
 ```
 source ./msu/scripts/sdaccel_env.sh
-cd msu/rtl/sdaccel
+cd msu
 make clean
 make hw
 ```
 
-Once synthesis successfully completes you can register the new image. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdfsn' but you will need to change this to match your bucket name. Once that is done run the following:
+Once synthesis successfully completes you can register the new image to process it for running on FPGA hardware. Follow the instructions in <https://github.com/aws/aws-fpga/blob/master/SDAccel/docs/Setup_AWS_CLI_and_S3_Bucket.md> to setup an S3 bucket. This only needs to be done once. We assume a bucket name 'vdfsn' but you will need to change this to match your bucket name. Once that is done run the following:
 
 ```
 # Configure AWS credentials. You should only need to do this once on a given

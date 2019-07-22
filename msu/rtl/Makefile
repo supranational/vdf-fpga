@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+default: run 
 
 # Multiplier configuration
 include multiplier.mk
@@ -24,7 +25,6 @@ T_FINAL               ?= 3
 FASTSIM               ?= 1
 INTERMEDIATES         ?= 0
 
-include ./modulus.mk
 include ./verilator.mk
 
 
@@ -78,9 +78,8 @@ VERILATOR_FLAGS       += -DMSU_SQ_OUT_BITS_DEF=$(SQ_OUT_BITS)
 MODSQR_PATH            = $(realpath ../../modular_square/rtl)
 
 ######################################################################
-default: run
 
-run:
+run: msuconfig.vh
 	@echo
 	@echo "-- Large Integer Modular Squaring"
 
@@ -95,7 +94,6 @@ endif
 
 	@echo
 	@echo "-- VERILATE ----------------"
-	touch msuconfig.vh # TODO: remove once there is a way to do -D
 	$(VERILATOR) $(VERILATOR_FLAGS) -f input.vc $(TOP_FILE) ../sw/main.cpp
 
 	@echo
@@ -185,3 +183,4 @@ show-config:
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
 	-rm -rf obj_dir logs *.log *.dmp *.vpd coverage.dat core mem
+	-rm -rf msuconfig.vh

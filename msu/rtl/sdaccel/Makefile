@@ -14,7 +14,7 @@
 #  limitations under the License.
 #
 
-OBJ=obj
+OBJ ?= obj
 
 # Build the simulation model plus the host. To rebuild the RTL
 # after making changes you must 'make clean' first.
@@ -51,4 +51,6 @@ ifdef XILINX_SDX
 	$(MAKE) -C $(OBJ) -f ../Makefile.sdaccel cleanall
 endif
 	rm -fr $(OBJ)
+	rm -fr $(OBJ)_hw_emu
+	rm -fr $(OBJ)_hw
 

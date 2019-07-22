@@ -17,11 +17,11 @@
 `include "msuconfig.vh"
 
 // MSU configuration
-`ifndef MSU_SQ_IN_BITS_DEF
- `define MSU_SQ_IN_BITS_DEF  1024
+`ifndef SQ_IN_BITS_DEF
+ `define SQ_IN_BITS_DEF  1024
 `endif
-`ifndef MSU_SQ_OUT_BITS_DEF
- `define MSU_SQ_OUT_BITS_DEF 1024
+`ifndef SQ_OUT_BITS_DEF
+ `define SQ_OUT_BITS_DEF 1024
 `endif
 
 
@@ -31,8 +31,8 @@ module msu
     parameter int AXI_LEN               = 32,
     parameter int C_XFER_SIZE_WIDTH     = 32,
 
-    parameter int SQ_IN_BITS            = `MSU_SQ_IN_BITS_DEF,
-    parameter int SQ_OUT_BITS           = `MSU_SQ_OUT_BITS_DEF,
+    parameter int SQ_IN_BITS            = `SQ_IN_BITS_DEF,
+    parameter int SQ_OUT_BITS           = `SQ_OUT_BITS_DEF,
     parameter int T_LEN                 = 64
     )
    (
@@ -94,14 +94,14 @@ module msu
    logic [SQ_IN_BITS-1:0]        sq_in;
    logic [SQ_OUT_BITS-1:0]       sq_out;
 
-   logic sq_start;
-   logic sq_finished;
+   logic                         sq_start;
+   logic                         sq_finished;
+
+   logic                         final_iteration;
    
    // AXI data storage
    logic [AXI_IN_BITS-1:0]       axi_in;
    logic [AXI_OUT_BITS-1:0]      axi_out;
-   //logic [AXI_LEN-1:0]           axi_in[AXI_IN_COUNT];
-   //logic [AXI_LEN-1:0]           axi_out[AXI_OUT_COUNT];
    logic [C_XFER_SIZE_WIDTH-1:0] axi_out_count;
    logic                         axi_in_shift;
 
@@ -194,6 +194,7 @@ module msu
          t_current            <= t_current + 1;
       end
    end
+   assign final_iteration = sq_finished && (t_current == t_final-1);
 
    assign sq_start                  = state == STATE_START;
    assign s_axis_xfer_size_in_bytes = (AXI_IN_COUNT*AXI_BYTES_PER_TXN);
@@ -226,7 +227,7 @@ module msu
    //////////////////////////////////////////////////////////////////////
    localparam int SQ_OUT_OFFSET = 2;
    always @(posedge clk) begin
-      if(state == STATE_PREPARE_SEND) begin
+      if(final_iteration) begin
          axi_out_count                 <= 0;
          axi_out[T_LEN-1:0]            <= t_current;
          axi_out[AXI_OUT_BITS-1:T_LEN] <= sq_out;

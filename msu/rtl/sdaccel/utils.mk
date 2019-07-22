@@ -26,7 +26,8 @@ endif
 
 #Checks for XILINX_SDX
 ifndef XILINX_SDX
-$(error XILINX_SDX variable is not set, please set correctly and rerun)
+$(warning XILINX_SDX variable is not set, please set correctly and rerun)
+$(error     source msu/scripts/sdaccel_env.sh)
 endif
 
 #   sanitize_dsa - create a filesystem friendly name from dsa name

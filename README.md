@@ -1,110 +1,129 @@
 # VDF FPGA Competition Baseline Model
 
-This repository contains the modular squaring multiplier baseline design for the upcoming VDF low latency multiplier competition (stay tuned for more details). The model is designed to be highly parameterized with support for a variety of bit widths. 
+This repository contains the modular squaring multiplier baseline design for the VDF low latency multiplier FPGA competition.
 
-The algorithm used is a pipelined version of the multiplier developed by Erdinc Ozturk of Sabanci University and described in detail at MIT VDF Day 2019 (<https://dci.mit.edu/video-gallery/2019/5/29/survey-of-hardware-multiplier-techniques-new-innovations-in-low-latency-multipliers-e-ozturk>). 
+The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see **TODO**.
 
-There is also a very simple example using the high level operators (a*a)%N.
+## Function
 
-The model is not yet finalized. Expect to see changes leading up the competition start. Please reach out with any questions, comments, or feedback to hello@supranational.net.
-
-# MSU
-
-The MSU (Modular Squaring Unit) in `msu/rtl` is the top level component of the model. It is an SDAccel RTL Kernel compatible module responsible for interfacing to the outside world through AXI Lite. Internally it instantiates and controls execution of the modular squaring unit.
-
-The model supports three build targets:
-
-* Verilator simulation
-* Hardware emulation
-* FPGA execution
-
-This document describes the steps required to execute the model on the supported targets.
-
-# Recommended steps
-
-## Step 1 - Enable simulation environment
-
-Supported OS's are Ubuntu 18 and AWS F1 CentOS. The setup script requires sudo access to install dependencies.
+The function to optimize is repeated modular squaring over integers. A random input x will be committed at the start of the competition and disclosed at the end of the competition. 
 
 ```
-# Install dependencies
-./msu/scripts/simulation_setup.sh
+h = x^(2^t) mod N
 
-# Run simulations
-cd msu
-make
+y, N are 1024 bits
+
+t = 30
+
+x = random
 ```
 
-## Step 2 - Develop your squarer in Python/RTL
+## Interface
 
-Two squaring circuits are provided as examples, `modular_square/rtl/modular_square_simple.sv` and `modular_square/rtl/modular_square_8_cycles.sv`. You can start from either one. 
+The competition uses the AWS F1/Xilinx SDAccel build infrastructure described in [aws_f1](docs/aws_f1.md) to measure performance and functional correctness. If you conform to the following interface your design should function correctly in F1 in the provided software/control infrastructure.
 
-Search for "EDIT HERE" to quickly find starting points for editing:
-```
-find . -type f -exec grep "EDIT HERE" {} /dev/null \;
-```
-
-There are two testbench environments:
-- Direct - the testbdench interacts directly with the squaring circuit.
-- MSU - the testbench interacts with the MSU control module. 
-
-The Direct testbench provides a simpler environment for developing. 
-
-Note the default bitwidth for the simple squarer is 128bits due to verilator limitations. If you start with this design be sure to raise the bitwidth to 1024 in `msu/rtl/Makefile`.
-
-You can run simulations for either of the designs:
-```
-cd msu 
-
-# Simple squarer
-make clean; DIRECT_TB=1 make simple
-
-# 8 cycle Ozturk squarer
-make clean; DIRECT_TB=1 make ozturk
-
-# View waveforms
-gtkwave rtl/obj_dir/logs/vlt_dump.vcd
-```
-
-## Step 3 - Synthesize
-
-Once you have made changes to the multiplier you can run synthesis to in Vivado, AWS F1, or the test portal to measure and tune performance. 
-
-**_Vivado_**
-
-The Vivado GUI makes it easy to try different parameters and visualize results. 
+The interface is shown in [modular_square/rtl/modular_square_simple.sv](modular_square/rtl/modular_square_simple.sv):
 
 ```
-# Simple squarer
-cd msu/rtl/vivado_simple
-./run_vivado.sh
-
-# 8 cycle Ozturk squarer
-cd msu/rtl/vivado_ozturk
-./run_vivado.sh
+module modular_square_simple
+   #(
+     parameter int MOD_LEN = 1024
+    )
+   (
+    input logic                   clk,
+    input logic                   reset,
+    input logic                   start,
+    input logic [MOD_LEN-1:0]     sq_in,
+    output logic [MOD_LEN-1:0]    sq_out,
+    output logic                  valid
+   );
 ```
 
-This will launch Vivado with a project configured to build the Ozturk multiplier in out-of-context mode. While not identical to the sdaccel synthesis, it include a pblock that mimics the Shell Logic exclusion are so the results are pretty close. Another pblock forces the latency critical logic to stay in SLR2 for improved performance. 
+![Image of interface timing](docs/interface_timing.png)
 
-**Bitwidth**: To test out smaller bitwidths edit the `run_vivado.sh` script. For the Ozturk multiplier be sure to run the script first at 1024 bits to generate the full complement of reduction lookup table files. **If you start with the simple squarer design be sure to increase the bitwidth once you add your multiplier to test at the full 1024 bits.**
+- **MOD_LEN** - Number of bits in the modulus, in this case 1024. 
+- **reset** - Reset is active high, as recommended by Xilinx design methodologies.
+- **start** - A one cycle pulse indicating that sq_in is valid and the computation should start.
+- **sq_in** - The initial number to square, which should be captured at the start pulse. 
+- **sq_out** - The result of the squaring operation. This should be fed back internally to sq_in for repeated squaring. It will be consumed externally at the clock edge trailing the valid signal pulse. 
+- **valid** - A one cycle pulse indicating that sq_out is valid. 
 
-**_AWS F1_**
+If you have requirements that go beyond this interface, such as loading precomputed values, contact us by email (hello@supranational.net) and we will work with you to determine the best path forward. We are very interested in seeing alternative approaches and algorithms. 
 
-You can use the AWS cloud to run synthesis for F1. See [aws_f1](docs/aws_f1.md).
+## Baseline models
 
-**_On Premise_**
+Two baseline models are provided. You can start from either design. 
 
-You can set up an on-premise environment to targeting the AWS F1 platform. See [on-premise](docs/onprem.md).
+**Simple**
 
-**_Test portal_**
+See [modular_square/rtl/modular_square_simple.sv](modular_square/rtl/modular_square_simple.sv). This naive design uses high level operators (a*a)%N to do the computation. While not high performance, it simulates correctly, is easy to understand, and can make for a good starting point.
 
-TODO: You can submit models to be run on your behalf. 
+**Ozturk**
 
-## Step 4 - Hardening
+See [modular_square/rtl/modular_square_8_cycles.sv](modular_square/rtl/modular_square_8_cycles.sv). This is an implementation of the multiplier developed by Erdinc Ozturk of Sabanci University and described in detail at [MIT VDF Day 2019](https://dci.mit.edu/video-gallery/2019/5/29/survey-of-hardware-multiplier-techniques-new-innovations-in-low-latency-multipliers-e-ozturk) and in [Modular Multiplication Algorithm Suitable For Low-Latency Circuit Implementations](https://eprint.iacr.org/2019/826). 
 
-Ultimately the `judge` target must pass to qualify for the competition. It runs simulations, hardware emulation, and synthesis, and bitstream generation. Like synthesis, you can run on-premise, use AWS F1, or use the test portal.
+There are several potential paths for alternative designs and optimizations noted below. 
 
-# Optimization Ideas
+## Step 1 - Develop your multiplier
+
+1. Install [Vivado 2018.3](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/2018-3.html). To get started you can use a Xilinx WebPack or 30-day trial license. Extended trial licenses will be made available to registered competitors through Supranational in partnership with Xilinx early in the competition.
+1. Depending on your approach choose one of the baseline models to start from. Starting Vivado using the `run_vivado.sh` will automatically generate testbench inputs. 
+
+    **Simple**
+    ```
+    # TO MODIFY: edit modular_square/rtl/modular_square_simple.sv
+    #
+    cd msu/rtl/vivado_simple
+    ./run_vivado.sh
+    ```
+    
+    **Ozturk**
+    ```
+    # TO MODIFY: edit modular_square/rtl/modular_square_8_cycles.sv
+    #
+    cd msu/rtl/vivado_ozturk
+    ./run_vivado.sh
+    ```
+1. Run simulations to ensure functional correctness.
+    * The provided Vivado model includes a basic simulation testbench.
+        * Run vivado (run_vivado.sh)
+        * Click Run Simulation->Run Behavioral Simulation
+        * The test is self checking and should print "SUCCESS". 
+    * The simulation prints cycles per squaring statistics. This, along with synthesis timing results, provides an estimate of latency per squaring.
+    * You can also use [verilator](docs/verilator.md) if you prefer by running 'cd msu/rtl; make'. No license required.
+1. Run out-of-context synthesis + place and route to understand and tune performance. A pblock is set up to mimic the AWS F1 Shell exclusion zone. In our exprience these results are pretty close to what you will get on F1 and and provide an easier/faster/more intuitive interface for improving the design. 
+1. When you are happy with your design move on to Step 2!
+
+## Step 2 - SDAccel integration
+
+Simulation and synthesis/place and route provide a very good performance estimate. The final determination of performance will be based results from the official AWS F1 SDAccel environment. 
+
+The reasons to go from from synthesis/simulation, which are (relatively) easy, to running on hardware are:
+- Ensure the design functions, fits, performs as expected, etc. in F1, the target platform.
+- Test correct functionality with many more iterations by running on FPGA hardware.
+- Ensure correct operation when techniques such as false paths, multi-cycle paths, etc. are used. These are very difficult to very in simulation alone.
+
+**SDAccel projected performance**
+
+Synthesis/P&R in SDAccel uses automatic frequency scaling to provide feedback on the highest achievable clock frequency. After bitstream generation look for a message like the following in the output logs:
+```
+INFO: [XOCC 60-1230] The compiler selected the following frequencies for the 
+runtime controllable kernel clock(s) and scalable system clock(s): System 
+(SYSTEM) clock: clk_main_a0 = 250, Kernel (DATA) clock: clk_extra_b0 = 161, 
+Kernel (KERNEL) clock: clk_extra_c0 = 500
+```
+* This indicates a frequency of 161 MHz for the RTL kernel.
+* To estimate squarer latency, multiply the inverse of the frequency by cycles per squaring. Given 8 cycles per squaring, `(1/161)*8*1000 = 49.7ns`.
+* Providing clock frequency target guidance to the synthesis tools through the "kernel_frequency" option in `msu/rtl/sdaccel/Makefile.sdaccel` will likely reduce runtime and improve the overall result.
+
+**Testing in SDAccel**
+
+There are three ways to test your design in SDAccel:
+1. **Test portal** - The easiest way is to submit your design to the test portal. It will run simulations, hardware emulation, synthesis, and place and route and provide you with a link to the results. You'll need to officially register for the competition and receive a shared secret to submit designs. See [test portal](docs/test_portal.md). **Note we expect this to be operational after the first month of the competition.**
+1. **AWS F1** - Instantiate an AWS EC2 F1 development instance and run the flows yourself. See [aws_f1](docs/aws_f1.md).
+1. **On-premise** - You can install SDAccel on-premise and run the same flows locally. See [on-premise](docs/onprem.md).
+
+## Optimization Ideas
 
 The following are some potential optimization paths.
 
@@ -112,12 +131,12 @@ The following are some potential optimization paths.
 * Shorten the pipeline - we believe a 4-5 cycle pipeline is possible with this design
 * Lengthen the pipeline - insert more pipe stages, run with a faster clock
 * Change the partial product multiplier size. The DSPs are 26x17 bit multipliers and the modular squaring circuit supports using either by changing a define at the top.
-* This design uses lookup tables stored in BlockRAM for the reduction step. These are easy to change to distributed memory and there is support in the model to use UltraRAM. 
+* This design uses lookup tables stored in BlockRAM for the reduction step. These are easy to change to distributed memory and there is support in the model to use UltraRAM. **TODO - point to a branch with this code**
 * Optimize the compression trees and accumulators to make the best use of FPGA LUTs and CARRY8 primitives.
 * Floorplan the design.
 * Use High Level Synthesis (HLS) or other techniques.
 
-# References
+## References
 
 Information on VDFs: <https://vdfresearch.org/>
 
@@ -132,3 +151,8 @@ AWS online documentation:
   * SDAccel Docs: <https://github.com/aws/aws-fpga/tree/master/SDAccel/docs>
   * Shell Interface: <https://github.com/aws/aws-fpga/blob/master/hdk/docs/AWS_Shell_Interface_Specification.md>
   * Simulating CL Designs: <https://github.com/aws/aws-fpga/blob/master/hdk/docs/RTL_Simulating_CL_Designs.md>
+
+## Questions?
+
+Please reach out with any questions, comments, or feedback through **TODO - channels**
+

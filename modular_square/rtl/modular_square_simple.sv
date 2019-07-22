@@ -22,7 +22,7 @@
 `define MOD_LEN_DEF 1024
 `endif
 `ifndef MODULUS_DEF
- `define MODULUS_DEF 1024'd435498004454960311370317052397000844802649144205780523913417362625407607066231475209709961473477443808083986632633065072597378881054561793869773671502511117663614834848276234008576433331085414399994150596781014081314102597766163665183768312980812151246986379323231704775209109465985927509514160947756090729;
+ `define MODULUS_DEF 1024'd124066695684124741398798927404814432744698427125735684128131855064976895337309138910015071214657674309443149407457493434579063840841220334555160125016331040933690674569571217337630239191517205721310197608387239846364360850220896772964978569683229449266819903414117058030106528073928633017118689826625594484331
 `endif
 
 module modular_square_simple
@@ -48,47 +48,53 @@ module modular_square_simple
    localparam  [3:0]              PIPELINE_DEPTH = 10;
    logic [3:0]                    valid_count;
    logic                          running;
+   logic                          valid_next;
 
    // Store the square input, circulate the result back to the input
    always_ff @(posedge clk) begin
       if(start) begin
          cur_sq_in <= sq_in;
-      end else if(valid) begin
+      end else if(valid_next) begin
          cur_sq_in <= sq_out_comb;
       end
    end
-   assign sq_out = cur_sq_in;
+   assign sq_out = valid ? cur_sq_in : {MOD_LEN{1'bx}};
 
    // Control
    always_ff @(posedge clk) begin
       if(reset) begin
-         running <= 0;
-         valid_count <= 0;
+         running        <= 0;
+         valid_count    <= 0;
       end else begin
-         if(start || valid) begin
-            running <= 1;
+         if(start || valid_next) begin
+            running     <= 1;
             valid_count <= 0;
          end else begin
             valid_count <= valid_count + 1;
          end
       end
    end
+   
+   assign valid_next = running && (valid_count == PIPELINE_DEPTH-1);
+   always_ff @(posedge clk) begin
+      valid <= valid_next;
+   end
 
-   assign valid = running && (valid_count == PIPELINE_DEPTH-1);
-
-   //
+   //----------------------------------------------------------------------
    // EDIT HERE
    // Insert/instantiate your multiplier below
+   // Modify control above as needed while satisfying the interface
    //
 
    // Compute the modular square function
-   // Note verilator fails with a 1024 bit square so this uses a reduced bit
-   // size. You will need to increase MOD_LEN in Makefile.simple to 1024 once
-   // you implement your multiplier.
    always_comb begin
       squared     = {{MOD_LEN{1'b0}}, cur_sq_in};
       squared     = squared * squared;
       squared     = squared % {{MOD_LEN{1'b0}}, MODULUS};
       sq_out_comb = squared[MOD_LEN-1:0];
    end
+
+   // EDIT HERE
+   //----------------------------------------------------------------------
+
 endmodule

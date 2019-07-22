@@ -24,8 +24,6 @@ include ../../multiplier.mk
 HOST_FLAGS_HW_EMU  = -e -f 1
 HOST_FLAGS_FPGA    = -e -f 10
 
-include ../../modulus.mk
-
 ############################################################################
 # Synthesis directives
 ############################################################################
@@ -186,29 +184,10 @@ $(BINARY_CONTAINER_AWS): $(BINARY_CONTAINER)
 	   -s3_bucket=$(S3_BUCKET) -s3_dcp_key=dcp -s3_logs_key=logs
 	cat *afi_id.txt
 
-# Configure MSU parameters. These are included through vdf_kernel.sv
-msuconfig.vh:
-	echo "\`define SQ_IN_BITS_DEF $(SQ_IN_BITS)" \
-              > msuconfig.vh
-	echo "\`define SQ_OUT_BITS_DEF $(SQ_OUT_BITS)" \
-              >> msuconfig.vh
-	echo "\`define MODULUS_DEF $(MOD_LEN)'d$(MODULUS)" \
-              >> msuconfig.vh
-	echo "\`define MOD_LEN_DEF $(MOD_LEN)" \
-              >> msuconfig.vh
-ifeq ($(SIMPLE_SQ), 1)
-	echo "\`define SIMPLE_SQ $(SIMPLE_SQ)" \
-              >> msuconfig.vh
-endif
 
 # Generate the LUTs. reduction_lut_000.dat will be present for any bitwidth.
 $(BINARY_CONTAINER_XO): mem/reduction_lut_000.dat
 $(BINARY_CONTAINER_XO): msuconfig.vh
-mem/reduction_lut_000.dat: 
-	mkdir -p mem
-	cd mem && $(MODSQR_DIR)/rtl/gen_reduction_lut.py \
-                          --nonredundant $(NONREDUNDANT_ELEMENTS) \
-                          --modulus $(MODULUS)
 
 sdaccel.ini:
 ifeq ($(TRACE), 1)

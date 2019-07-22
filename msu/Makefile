@@ -16,73 +16,71 @@
 
 SDACCEL_DIR=rtl/sdaccel
 
-all: sim
 
-regress: sim hw_emu_random
+# Main targets
 
-#
-# EDIT HERE
-# Edit the rules below to run appropriate simulations, hw emulation, and
-# synthesis for your model depending on where you start:
-#   modular_square_simple  - Remove SIMPLE_SQ builds
-#   modular_square_8_cycle - Remove non SIMPLE_SQ builds
-#   other                  - Edit rtl/Makefile and rtl/sdaccel/Makefile to
-#                            include your code.
-#
-# DIRECT_TB mode bypasses the msu (the SDAccel RTL Kernel adapter) and connects
-# directly to the squaring circuit. This is the simplest flow for general
-# development and testing. Ultimately you will need to test the msu flow as
-# well so that it works in hardware emulation, synthesis, and the FPGA
-# hardware.
-#
-# For initial multiplier development consider using the target "ozturk" or
-# "simple".
-#
+all: hw_emu
 
-sim: simple simple_msu ozturk ozturk_msu
-
-ozturk_msu:
-	$(MAKE) clean
-	$(MAKE) -C rtl run
-
-ozturk:
-	$(MAKE) clean
-	DIRECT_TB=1 $(MAKE) -C rtl run
-
-simple_msu:
-	$(MAKE) clean
-	SIMPLE_SQ=1 $(MAKE) -C rtl run
-
-simple:
-	$(MAKE) clean
-	SIMPLE_SQ=1 DIRECT_TB=1 $(MAKE) -C rtl run
+# Requires verilator
+regress: sim hw_emu_simple judge
 
 judge:
 	$(MAKE) clean
 
-	@echo "Running functional tests..."
-	$(MAKE) -C rtl judge
+	@echo ""
+	@echo "############################################################"
+	@echo "# Running hardware emulation..."
+	@echo "############################################################"
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) hw_emu
 
-	@echo "Running hardware emulation..."
-	$(MAKE) hw_emu_random
+	@echo ""
+	@echo "############################################################"
+	@echo "# Synthesizing..."
+	@echo "############################################################"
+	OBJ=obj_hw     MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) hw
 
-	@echo "Synthesizing..."
-	$(MAKE) hw
 
 hw_emu:
 	make clean
-	$(MAKE) -C $(SDACCEL_DIR) hw_emu
+	MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+
+hw_emu_simple:
 	make clean
-	SIMPLE_SQ=1 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+	MOD_LEN=1024 SIMPLE_SQ=1 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+
+hw:
+	MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw
+
+
+
+# Additional, mostly verilator, targets
+
+sim: simple simple ozturk ozturk
+
+ozturk:
+	$(MAKE) clean
+	$(MAKE) -C rtl run
+
+simple:
+	$(MAKE) clean
+	SIMPLE_SQ=1 $(MAKE) -C rtl run
+
 
 hw_emu_random:
 	make clean
 	$(MAKE) -C $(SDACCEL_DIR) hw_emu_random
 
-hw:
-	$(MAKE) -C $(SDACCEL_DIR) hw
 
 clean:
 	$(MAKE) -C rtl clean
 	$(MAKE) -C $(SDACCEL_DIR) clean
 
+
+# These work but seems unnecessary to maintain another testbench variant
+# ozturk:
+# 	$(MAKE) clean
+# 	DIRECT_TB=1 $(MAKE) -C rtl run
+
+# simple:
+# 	$(MAKE) clean
+# 	SIMPLE_SQ=1 DIRECT_TB=1 $(MAKE) -C rtl run

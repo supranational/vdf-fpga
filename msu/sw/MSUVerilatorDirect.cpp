@@ -130,9 +130,13 @@ void MSUVerilator::compute_job(uint64_t t_start,
             clock_cycle();
         }
         pet();
-        
-        clock_cycle();
+
         t_cur++;
+        if(t_cur == t_final) {
+            break;
+        }
+
+        clock_cycle();
     }
         
     bn_from_buffer(msu_out, tb->sq_out, squarer->msu_words_out());

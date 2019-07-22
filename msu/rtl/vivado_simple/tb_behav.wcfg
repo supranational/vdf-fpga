@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="testsq2K_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="glbl" />
+            <top_module name="testsq2K" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="41466667fs"></ZoomStartTime>
+      <ZoomEndTime time="392666668fs"></ZoomEndTime>
+      <Cursor1Time time="103867000fs"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="182"></NameColumnWidth>
+      <ValueColumnWidth column_width="74"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="6" />
+   <wvobject type="logic" fp_name="/testsq2K/clk">
+      <obj_property name="ElementShortName">clk</obj_property>
+      <obj_property name="ObjectShortName">clk</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/testsq2K/reset">
+      <obj_property name="ElementShortName">reset</obj_property>
+      <obj_property name="ObjectShortName">reset</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/testsq2K/start">
+      <obj_property name="ElementShortName">start</obj_property>
+      <obj_property name="ObjectShortName">start</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/testsq2K/sq_in">
+      <obj_property name="ElementShortName">sq_in[1023:0]</obj_property>
+      <obj_property name="ObjectShortName">sq_in[1023:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/testsq2K/sq_out">
+      <obj_property name="ElementShortName">sq_out[1023:0]</obj_property>
+      <obj_property name="ObjectShortName">sq_out[1023:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/testsq2K/valid">
+      <obj_property name="ElementShortName">valid</obj_property>
+      <obj_property name="ObjectShortName">valid</obj_property>
+   </wvobject>
+</wave_config>

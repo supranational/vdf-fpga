@@ -698,7 +698,9 @@ module modular_square_8_cycles
       end 
    end
 
-   // Instantiate memory holding reduction LUTs 
+   // Instantiate memory holding reduction LUTs
+   // TODO - remove reduction loading pins or drive them
+   /* verilator lint_off PINMISSING */
    reduction_lut #(.REDUNDANT_ELEMENTS(REDUNDANT_ELEMENTS),
                    .NONREDUNDANT_ELEMENTS(NONREDUNDANT_ELEMENTS),
                    .NUM_SEGMENTS(NUM_SEGMENTS),
@@ -709,8 +711,10 @@ module modular_square_8_cycles
                      .shift_high(curr_lookup_shift),
                      .shift_overflow(curr_overflow),
                      .lut_addr(lut_addr),
-                     .lut_data(lut_data)
+                     .lut_data(lut_data),
+                     .we(0)
                     );
+   /* verilator lint_on PINMISSING */
 
    // Accumulate reduction lut values with running total
    always_comb begin
