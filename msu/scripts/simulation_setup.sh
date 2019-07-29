@@ -23,3 +23,5 @@ else
     sudo yum update -y
     sudo yum install -y gmp-devel verilator python36 gtkwave
 fi
+
+export PATH=/tools/Xilinx/Vivado/2018.3/bin:$PATH

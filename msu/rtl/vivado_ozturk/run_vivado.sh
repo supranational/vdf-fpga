@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e 
+
 # Configuration
 # If using 128 bits be sure to change tb.sv as well.
 export MOD_LEN=1024

@@ -1,8 +1,12 @@
 # VDF FPGA Competition Baseline Model
 
-This repository contains the modular squaring multiplier baseline design for the VDF low latency multiplier FPGA competition.
+This repository contains the modular squaring multiplier baseline design for the VDF (Verifiable Delay Function) low latency multiplier FPGA competition. For more information about the research behind VDFs see <https://vdfresearch.org/>.
 
-The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see **TODO**.
+The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see [FPGA Contest](https://supranational.atlassian.net/wiki/spaces/VA/pages/36569208/FPGA+Contest) on the [VDF Alliance](https://supranational.atlassian.net/wiki/spaces/VA/overview) page.
+
+Official competition rules can be found in [FPGA_Competition_Official_Rules_and_Disclosures.pdf](FPGA_Competition_Official_Rules_and_Disclosures.pdf).
+
+For a step by step walkthrough of how to get started, with screenshots, see [Getting Started](https://supranational.atlassian.net/wiki/spaces/VA/pages/37847091/Getting+Started).
 
 ## Function
 
@@ -11,11 +15,41 @@ The function to optimize is repeated modular squaring over integers. A random in
 ```
 h = x^(2^t) mod N
 
-y, N are 1024 bits
+x, N are 1024 bits
 
-t = 30
+t = 2^30
 
 x = random
+```
+
+Here is a sample implementation in Python:
+```
+#!/usr/bin/python3
+
+from Crypto.PublicKey import RSA
+from random import getrandbits
+
+# Competition is for 1024 bits
+NUM_BITS       = 1024
+
+NUM_ITERATIONS = 1000
+
+# Rather than being random each time, we will provide randomly generated values
+x = getrandbits(NUM_BITS)
+N = RSA.generate(NUM_BITS).n
+
+# t should be small for testing purposes.  
+# For the final FPGA runs, t will be around 1 billion
+t = NUM_ITERATIONS
+
+# Iterative modular squaring t times
+# This is the function that needs to be optimized on FPGA
+for _ in range(t):
+   x = (x * x) % N
+
+# Final result is a 1024b value
+h = x
+print(h)
 ```
 
 ## Interface
@@ -52,7 +86,7 @@ If you have requirements that go beyond this interface, such as loading precompu
 
 ## Baseline models
 
-Two baseline models are provided. You can start from either design. 
+Two baseline models are provided for guidance. You can start from either design or create your own that matches the expected interface.
 
 **Simple**
 
@@ -66,7 +100,14 @@ There are several potential paths for alternative designs and optimizations note
 
 ## Step 1 - Develop your multiplier
 
-1. Install [Vivado 2018.3](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/2018-3.html). To get started you can use a Xilinx WebPack or 30-day trial license. Extended trial licenses will be made available to registered competitors through Supranational in partnership with Xilinx early in the competition.
+1. Install [Vivado 2018.3](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/2018-3.html). To get started you can use a Xilinx WebPack or 30-day trial license. **Extended trial licenses will be made available to registered competitors through Supranational in partnership with Xilinx early in the competition.**
+1. Install dependencies:
+    ```
+    source msu/scripts/simulation_setup.sh
+    ```
+1. Be sure support for Spartan-7 is included in Vivado. This part should be available with either WebPack or the 30-day trial licenase. To verify:
+    * In Vivado, select Help -> Add Design Tools or Devices, then sign in
+    * Expand "7 Series", ensure "Spartan-7" is enabled
 1. Depending on your approach choose one of the baseline models to start from. Starting Vivado using the `run_vivado.sh` will automatically generate testbench inputs. 
 
     **Simple**
@@ -91,7 +132,12 @@ There are several potential paths for alternative designs and optimizations note
         * The test is self checking and should print "SUCCESS". 
     * The simulation prints cycles per squaring statistics. This, along with synthesis timing results, provides an estimate of latency per squaring.
     * You can also use [verilator](docs/verilator.md) if you prefer by running 'cd msu/rtl; make'. No license required.
-1. Run out-of-context synthesis + place and route to understand and tune performance. A pblock is set up to mimic the AWS F1 Shell exclusion zone. In our exprience these results are pretty close to what you will get on F1 and and provide an easier/faster/more intuitive interface for improving the design. 
+1. Run out-of-context synthesis + place and route to understand and tune performance. A pblock is set up to mimic the AWS F1 Shell exclusion zone. In our exprience these results are pretty close to what you will get on F1 and and provide an easier/faster/more intuitive interface for improving the design.
+1. Once you have the 30 day trial license you can enable the vu9p part, which is the target of the contest.
+    * Help -> Add Design Tools or Devices, sign in
+    * Enable "Ultrascale+"
+    * In your project, select Settings in the upper left, then "Project device"
+    * Select Boards, then select VCU118
 1. When you are happy with your design move on to Step 2!
 
 ## Step 2 - SDAccel integration
@@ -122,6 +168,12 @@ There are three ways to test your design in SDAccel:
 1. **Test portal** - The easiest way is to submit your design to the test portal. It will run simulations, hardware emulation, synthesis, and place and route and provide you with a link to the results. You'll need to officially register for the competition and receive a shared secret to submit designs. See [test portal](docs/test_portal.md). **Note we expect this to be operational after the first month of the competition.**
 1. **AWS F1** - Instantiate an AWS EC2 F1 development instance and run the flows yourself. See [aws_f1](docs/aws_f1.md).
 1. **On-premise** - You can install SDAccel on-premise and run the same flows locally. See [on-premise](docs/onprem.md).
+
+## Step 3 - Submit
+
+1. Fill in the [FPGA_Competition_Application_Form.pdf](FPGA_Competition_Application_Form.pdf) and email to hello@supranational.net, if you haven't already. 
+1. Fill in the [Submission_Form.txt](Submission_Form.txt). This stays in the repository and helps convey design expectations.
+1. Invite 'simonatsn' from Supranational to collaborate on your design repository in github.
 
 ## Optimization Ideas
 
