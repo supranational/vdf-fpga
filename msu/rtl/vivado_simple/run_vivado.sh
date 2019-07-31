@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Configuration
 export MOD_LEN=1024
 export SIMPLE_SQ=1
@@ -15,7 +17,7 @@ cd $SCRIPTPATH
 rm -f ../msuconfig.vh
 
 # Generate a test
-../gen_test.py -c
+../gen_test.py -c -s $MOD_LEN
 
 # Generate the Vivado project
 if [ ! -d msu ]; then
