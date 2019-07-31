@@ -82,7 +82,7 @@ module modular_square_simple
 - **sq_out** - The result of the squaring operation. This should be fed back internally to sq_in for repeated squaring. It will be consumed externally at the clock edge trailing the valid signal pulse. 
 - **valid** - A one cycle pulse indicating that sq_out is valid. 
 
-If you have requirements that go beyond this interface, such as loading precomputed values, contact us by email (hello@supranational.net) and we will work with you to determine the best path forward. We are very interested in seeing alternative approaches and algorithms. 
+If you have requirements that go beyond this interface, such as loading precomputed values, contact us by email (hello@vdfalliance.org) and we will work with you to determine the best path forward. We are very interested in seeing alternative approaches and algorithms. 
 
 ## Baseline models
 
@@ -183,7 +183,7 @@ The following are some potential optimization paths.
 * Shorten the pipeline - we believe a 4-5 cycle pipeline is possible with this design
 * Lengthen the pipeline - insert more pipe stages, run with a faster clock
 * Change the partial product multiplier size. The DSPs are 26x17 bit multipliers and the modular squaring circuit supports using either by changing a define at the top.
-* This design uses lookup tables stored in BlockRAM for the reduction step. These are easy to change to distributed memory and there is support in the model to use UltraRAM. **TODO - point to a branch with this code**
+* This design uses lookup tables stored in BlockRAM for the reduction step. These are easy to change to distributed memory and there is support in the model to use UltraRAM. For an example using UltraRAM see https://github.com/supranational/vdf-fpga/tree/f72eb8c06eec94a09142f675cde8d1514fb72e60
 * Optimize the compression trees and accumulators to make the best use of FPGA LUTs and CARRY8 primitives.
 * Floorplan the design.
 * Use High Level Synthesis (HLS) or other techniques.
@@ -206,5 +206,7 @@ AWS online documentation:
 
 ## Questions?
 
-Please reach out with any questions, comments, or feedback through **TODO - channels**
-
+Please reach out with any questions, comments, or feedback through any of the following channels:
+- Message Board: https://vdfalliance.discourse.group/
+- Telegram: https://t.me/joinchat/FoVncxdnEPRGRvkt1OuQmQ
+- E-mail: hello@vdfalliance.org
