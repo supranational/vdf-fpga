@@ -69,7 +69,6 @@ LDCLFLAGS += --xp "vivado_prop:run.impl_1.{STEPS.PLACE_DESIGN.TCL.PRE}=\
 
 LDCLFLAGS += --kernel_frequency 161
 
-
 ############################################################################
 # AWS/SDAccel configuration
 ############################################################################
