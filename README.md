@@ -216,9 +216,29 @@ AWS online documentation:
   * Shell Interface: <https://github.com/aws/aws-fpga/blob/master/hdk/docs/AWS_Shell_Interface_Specification.md>
   * Simulating CL Designs: <https://github.com/aws/aws-fpga/blob/master/hdk/docs/RTL_Simulating_CL_Designs.md>
 
+## Offered Resources
+
+**Xilinx Vivado Trial License**
+
+Xilinx has offered to provide contestants with a trial license of Vivado for use in the competition. If you would like to receive an extended trial license please complete an contest entry form and provide the host name and the MAC address of the computer on which you will install the trial license. This information can be e-mailed to hello@vdfalliance.org
+
+**AWS Promotional Credits**
+
+AWS has offered to provide a limited number of promotional credits to contestants who wish to test their designs directly on the AWS F1 infrastructure. To receive promotional credits for testing please complete an entry form, share your preliminary contest entry GitHub with the account "simonatsn", and provide the following information:
+
+First Name:
+Last Name:
+Email:
+AWS Account ID:
+Occupation/ Role:
+Company/ Organization (if applicable):
+Website (if applicable):
+
+The above information can be e-mailed to hello@vdfalliance.org. The GitHub repository that is shared must contain non-trivial changes to the baseline repository and will be open-sourced at the completion of the contest.
+
 ## Questions?
 
 Please reach out with any questions, comments, or feedback through any of the following channels:
 - Message Board: https://vdfalliance.discourse.group/
-- Telegram: https://t.me/joinchat/FoVncxdnEPRGRvkt1OuQmQ
+- Telegram: [vdfalliance.org](vdfalliance.org/telegram)
 - E-mail: hello@vdfalliance.org

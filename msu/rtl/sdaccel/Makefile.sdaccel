@@ -101,7 +101,7 @@ XCLBIN            := ./xclbin
 include ../utils.mk
 
 DSA               := $(call device2sandsa, $(DEVICE))
-BUILD_DIR         := ./vdf_9cc/_x.$(TARGET).$(DSA)
+BUILD_DIR         := ./vdf/_x.$(TARGET).$(DSA)
 
 CXX               := $(XILINX_SDX)/bin/xcpp
 XOCC              := $(XILINX_SDX)/bin/xocc

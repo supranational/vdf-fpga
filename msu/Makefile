@@ -24,25 +24,7 @@ all: hw_emu
 # Requires verilator
 regress: sim hw_emu_simple judge
 
-judge:
-	$(MAKE) clean
-
-	@echo ""
-	@echo "############################################################"
-	@echo "# Running hardware emulation..."
-	@echo "############################################################"
-	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) hw_emu
-
-	@echo ""
-	@echo "############################################################"
-	@echo "# Synthesizing..."
-	@echo "############################################################"
-	OBJ=obj_hw     MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) hw
-
-
-hw_emu:
-	make clean
-	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+judge: synthesis
 
 hw_emu_simple:
 	make clean
@@ -51,10 +33,35 @@ hw_emu_simple:
 hw:
 	MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw
 
+
+# This target is used by the test portal to perform hardware emulation
+hw_emu:
+	make clean
+
+	@echo ""
+	@echo "############################################################"
+	@echo "# Running hardware emulation..."
+	@echo "############################################################"
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 \
+		$(MAKE) -C $(SDACCEL_DIR) hw_emu |& tee hw_emu.log
+
+# This target is used by the test portal to perform synthesis
 synthesis:
 	make clean
-	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
-	OBJ=obj_hw     MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw
+
+	@echo ""
+	@echo "############################################################"
+	@echo "# Running hardware emulation..."
+	@echo "############################################################"
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 \
+		$(MAKE) -C $(SDACCEL_DIR) hw_emu |& tee hw_emu.log
+
+	@echo ""
+	@echo "############################################################"
+	@echo "# Synthesizing..."
+	@echo "############################################################"
+	OBJ=obj_hw     MOD_LEN=1024 SIMPLE_SQ=0 \
+		$(MAKE) -C $(SDACCEL_DIR) hw     |& tee hw.log
 
 
 # Additional, mostly verilator, targets
