@@ -2,7 +2,7 @@
 
 The online test portal dramatically lowers the bar to testing your design in AWS F1 environment. 
 
-Rather than go through the process of enabling AWS, the F1 environment, etc., you can design, test and tune your multiplier and Vivado and submit it to the portal to make sure the results are what you expect. 
+Rather than go through the process of enabling AWS, the F1 environment, etc., you can design, test and tune your multiplier in Vivado and submit it to the portal to make sure the results are what you expect. 
 
 Once you submit your design, the test portal will clone your repo, run simulation, hardware emulation, synthesis/place and route, and provide the results back to you in an encrypted file on S3. 
 

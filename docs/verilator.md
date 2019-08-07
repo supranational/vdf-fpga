@@ -2,7 +2,7 @@
 
 The Ozturk design supports verilator as a simulator. 
 
-While we're big fans of verilator, it unfortunately doesn't support 1024 bit modular squaring using * and %. As a result the default bitwidth for this design when using verilator is 128 bits. We found it can also be finicky with large bitwidths. Unpacked arrays of 
+While we're big fans of verilator, it unfortunately doesn't support 1024 bit modular squaring using * and %. As a result the default bitwidth for this design when using verilator is 128 bits. We found it can also be finicky with large bitwidths. Unpacked arrays of smaller words seems more stable.
 
 Enabling verilator takes just a few steps on Ubuntu 18 and AWS F1 CentOS. The setup script requires sudo access to install dependencies.
 

@@ -2,7 +2,7 @@
 
 This repository contains the modular squaring multiplier baseline design for the VDF (Verifiable Delay Function) low latency multiplier FPGA competition. For more information about the research behind VDFs see <https://vdfresearch.org/>.
 
-The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see [FPGA Contest](https://supranational.atlassian.net/wiki/spaces/VA/pages/36569208/FPGA+Contest) on the [VDF Alliance](https://supranational.atlassian.net/wiki/spaces/VA/overview) page.
+The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see [FPGA Contest Wiki](https://supranational.atlassian.net/wiki/spaces/VA/pages/36569208/FPGA+Contest) on the [VDF Alliance](https://supranational.atlassian.net/wiki/spaces/VA/overview) page.
 
 Official competition rules can be found in [FPGA_Competition_Official_Rules_and_Disclosures.pdf](FPGA_Competition_Official_Rules_and_Disclosures.pdf).
 
@@ -20,13 +20,25 @@ x, N are 1024 bits
 t = 2^30
 
 x = random
+
+Decimal:
+N = 12406669568412474139879892740481443274469842712573568412813185506
+    49768953373091389100150712146576743094431494074574934345790638408
+    41220334555160125016331040933690674569571217337630239191517205721
+    31019760838723984636436085022089677296497856968322944926681990341
+    4117058030106528073928633017118689826625594484331
+
+Hex:
+N = 0xb0ad4555c1ee34c8cb0577d7105a475171760330d577a0777ddcb955b302ad0
+    803487d78ca267e8e9f5e3f46e35e10ca641a27e622b2d04bb09f3f5e3ad274b1
+    744f34aeaf90fd45129a02a298dbc430f404f9988c862d10b58c91faba2aa2922
+    f079229b0c8f88d86bfe6def7d026294ed9dee2504b5d30466f7b0488e2666b
 ```
 
 Here is a sample implementation in Python:
 ```
 #!/usr/bin/python3
 
-from Crypto.PublicKey import RSA
 from random import getrandbits
 
 # Competition is for 1024 bits
@@ -36,10 +48,10 @@ NUM_ITERATIONS = 1000
 
 # Rather than being random each time, we will provide randomly generated values
 x = getrandbits(NUM_BITS)
-N = RSA.generate(NUM_BITS).n
+N = 124066695684124741398798927404814432744698427125735684128131855064976895337309138910015071214657674309443149407457493434579063840841220334555160125016331040933690674569571217337630239191517205721310197608387239846364360850220896772964978569683229449266819903414117058030106528073928633017118689826625594484331
 
 # t should be small for testing purposes.  
-# For the final FPGA runs, t will be around 1 billion
+# For the final FPGA runs, t will be 2^30
 t = NUM_ITERATIONS
 
 # Iterative modular squaring t times
@@ -182,7 +194,7 @@ The following are some potential optimization paths.
 * Try other algorithms such as Chinese Remainder Theorem, Montgomery/Barrett, etc. 
 * Shorten the pipeline - we believe a 4-5 cycle pipeline is possible with this design
 * Lengthen the pipeline - insert more pipe stages, run with a faster clock
-* Change the partial product multiplier size. The DSPs are 26x17 bit multipliers and the modular squaring circuit supports using either by changing a define at the top.
+* Change the partial product multiplier size. The DSPs are 26x17 bit unsigned multipliers. The Ozturk modular squaring circuit supports using either 17x17 or 26x17 bit multipliers by changing a define at the top of the file.
 * This design uses lookup tables stored in BlockRAM for the reduction step. These are easy to change to distributed memory and there is support in the model to use UltraRAM. For an example using UltraRAM see https://github.com/supranational/vdf-fpga/tree/f72eb8c06eec94a09142f675cde8d1514fb72e60
 * Optimize the compression trees and accumulators to make the best use of FPGA LUTs and CARRY8 primitives.
 * Floorplan the design.

@@ -110,7 +110,18 @@ void MSU::prepare_random_job(bool rrandom) {
 void MSU::compute_job() {
     struct timespec start_ts;
     start_ts = timer_start();
+    
+    //////////////////////////////////////////////////////////////////////
+    // PREPROCESSING goes below this line (Montgomery conversion, etc)
+    //
+
+    // Perform the computation
     device.compute_job(t_start, t_final, sq_in, sq_out);
+
+    //
+    // POSTPROCESSING goes above this line (Montgomery conversion, etc)
+    //////////////////////////////////////////////////////////////////////
+
     compute_time = timer_end(start_ts);
 
     if(!quiet) {

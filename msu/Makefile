@@ -42,15 +42,19 @@ judge:
 
 hw_emu:
 	make clean
-	MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
 
 hw_emu_simple:
 	make clean
-	MOD_LEN=1024 SIMPLE_SQ=1 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=1 $(MAKE) -C $(SDACCEL_DIR) hw_emu
 
 hw:
 	MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw
 
+synthesis:
+	make clean
+	OBJ=obj_hw_emu MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw_emu
+	OBJ=obj_hw     MOD_LEN=1024 SIMPLE_SQ=0 $(MAKE) -C $(SDACCEL_DIR) hw
 
 
 # Additional, mostly verilator, targets
