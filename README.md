@@ -240,5 +240,5 @@ The above information can be e-mailed to hello@vdfalliance.org. The GitHub repos
 
 Please reach out with any questions, comments, or feedback through any of the following channels:
 - Message Board: https://vdfalliance.discourse.group/
-- Telegram: [vdfalliance.org](vdfalliance.org/telegram)
+- Telegram: [vdfalliance.org](http://vdfalliance.org/telegram)
 - E-mail: hello@vdfalliance.org
