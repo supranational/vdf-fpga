@@ -226,12 +226,12 @@ Xilinx has offered to provide contestants with a trial license of Vivado for use
 
 AWS has offered to provide a limited number of promotional credits to contestants who wish to test their designs directly on the AWS F1 infrastructure. To receive promotional credits for testing please complete an entry form, share your preliminary contest entry GitHub with the account "simonatsn", and provide the following information:
 
-First Name:
-Last Name:
-Email:
-AWS Account ID:
-Occupation/ Role:
-Company/ Organization (if applicable):
+First Name:  
+Last Name:  
+Email:  
+AWS Account ID:  
+Occupation/ Role:  
+Company/ Organization (if applicable):  
 Website (if applicable):
 
 The above information can be e-mailed to hello@vdfalliance.org. The GitHub repository that is shared must contain non-trivial changes to the baseline repository and will be open-sourced at the completion of the contest.
