@@ -236,6 +236,19 @@ Website (if applicable):
 
 The above information can be e-mailed to hello@vdfalliance.org. The GitHub repository that is shared must contain non-trivial changes to the baseline repository and will be open-sourced at the completion of the contest.
 
+**Automated Test Portal**
+
+In addition to the resources above we are making available an automated test portal to aid in the development process. The portal operates through a WebHook installed in a shared GitHub repository. Pushes to the 'vdf-portal' branch are cloned and run through hardware emulation, synthesis, and bitstream generation in the AWS F1 environment. Results in the form of logs and other files are provided back to the submitter for inspection. 
+
+To receive access to the portal please complete an entry form, share your contest entry GitHub with the account "simonatsn", and provide the following information:
+
+First Name:  
+Last Name:  
+GitHub repo:  
+Email(s) for test portal automated job updates:  
+
+The above information can be e-mailed to hello@vdfalliance.org.
+
 ## Questions?
 
 Please reach out with any questions, comments, or feedback through any of the following channels:
