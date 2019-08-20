@@ -37,6 +37,7 @@ set msu_path         $root_path/msu/rtl
 set sdaccel_path     $root_path/msu/rtl/sdaccel
 set primitives_path  $root_path/primitives/rtl
 set modsqr_path      $root_path/modular_square/rtl
+set ip_path          $root_path/msu/rtl/vivado_ozturk/msu.srcs
 
 set path_to_packaged       "./packaged_kernel_${suffix}"
 set path_to_tmp_project    "./tmp_kernel_pack_${suffix}"
@@ -44,7 +45,7 @@ set path_to_tmp_project    "./tmp_kernel_pack_${suffix}"
 create_project -force kernel_pack $path_to_tmp_project 
 
 add_files -norecurse [glob $msu_path/msu.sv]
-add_files -norecurse [glob $msu_path/modular_square_wrapper.sv]
+add_files -norecurse [glob $msu_path/msu_cdc.sv]
 add_files -norecurse [glob msuconfig.vh]
 add_files -norecurse [glob mem/*.dat]
 add_files -norecurse [glob mem/reduction_lut.sv]
@@ -52,6 +53,9 @@ add_files -norecurse [glob $sdaccel_path/*.sv]
 add_files -norecurse [glob $sdaccel_path/*.v]
 add_files -norecurse [glob $primitives_path/*.sv]
 add_files -norecurse [glob $modsqr_path/*.sv]
+
+add_files $ip_path/clk_wiz_0/clk_wiz_0.v
+add_files $ip_path/clk_wiz_0/clk_wiz_0_clk_wiz.v
 
 set_property top ${krnl_name} [current_fileset]
 

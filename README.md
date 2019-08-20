@@ -1,4 +1,29 @@
-# VDF FPGA Competition Baseline Model
+# VDF FPGA Competition with Clock Generator
+
+Clock frequencies in AWS F1 are limited to a set of discrete values (https://github.com/aws/aws-fpga/blob/master/hdk/docs/dynamic_clock_config.md). It may be desireable for some models to run at a frequency more optimized for the specific design. 
+
+This branch instantiates an internal clock generator along with a clock domain crossing in the Ozturk multiplier to demonstrate one way to achieve a more targeted operating frequency. 
+
+Key changes:
+- Addition of a Clock Wizard instance in msu/rtl/vivado_ozturk/msu.srcs/clk_wiz_0. 
+- Instantiation of the Clock Wizard in msu.sv
+- Addition of clock domain crossing (CDC) logic in msu_cdc.sv
+- Addition of a pulse CDC primitve in primitives/rtl/cdc_sync_valid.sv
+- Fixed placement of DSPs and BRAMs based on a successful synthesis/P&R run to achieve more repeatable subseuqent build results. See https://www.xilinx.com/video/hardware/design-analysis-floorplanning-with-vivado.html for information about how this works. You can find the placement constraints in msu/rtl/sdaccel/placer_constrs.xdc.
+
+The generated clock is currently set to 160MHz. It is possible to change this:
+- cd msu/rtl/vivado_ozturk
+- ./run_vivado.sh
+- Click "IP Sources"
+- Right click "clk_wiz_0"
+- Click "Re-customize IP"
+- Change the desired output frequency
+- Generate the IP
+
+Note the clock wizard input clock should match the kernel-frequency as specified in Makefile.sdaccel. 
+
+
+# VDF FPGA Competition Baseline Model 
 
 This repository contains the modular squaring multiplier baseline design for the VDF (Verifiable Delay Function) low latency multiplier FPGA competition. For more information about the research behind VDFs see <https://vdfresearch.org/>.
 

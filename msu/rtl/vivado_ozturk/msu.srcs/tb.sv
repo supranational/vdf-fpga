@@ -53,17 +53,18 @@ module tb();
    integer                 total_cycle_count;
    integer                 total_squarings;
    
-   modular_square_wrapper
+   msu_cdc
      #(
        .MOD_LEN(MOD_LEN)
        )
       uut(
           clk,
+          clk,
           reset,
           start,
           sq_in,
-          sq_out,
-          valid
+          valid,
+          sq_out
           );
    
    initial begin

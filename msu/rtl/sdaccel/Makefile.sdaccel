@@ -64,10 +64,12 @@ LDCLFLAGS += --xp "vivado_prop:run.impl_1.\
 # This constraint places all performance critical logic in SLR2, which is
 # free of shell logic. 
 PLACER_CONSTRS     = $(realpath ../placer_constrs.xdc)
-LDCLFLAGS += --xp "vivado_prop:run.impl_1.{STEPS.PLACE_DESIGN.TCL.PRE}=\
-                   $(PLACER_CONSTRS)"
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.{STEPS.PLACE_DESIGN.TCL.PRE}=$(PLACER_CONSTRS)"
 
-LDCLFLAGS += --kernel_frequency 161
+LDCLFLAGS += --kernel_frequency 125
+
+TIMING_CONSTRS     = $(realpath ../timing_constrs.xdc)
+LDCLFLAGS += --xp "vivado_prop:run.impl_1.STEPS.OPT_DESIGN.TCL.POST=$(TIMING_CONSTRS)"
 
 ############################################################################
 # AWS/SDAccel configuration
