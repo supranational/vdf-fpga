@@ -1,0 +1,13 @@
+VDF FPGA Competition Submission Form
+
+To submit your design:
+- submit an official team entry form
+- fill in the fields below
+- create your final commit with git signoff:
+    git commit -s -m "round 1 entry"
+- email your final repo + commit to hello@vdfalliance.org
+
+Team name:
+Expected result (avg ns/square): 
+Design documentation (below):
+

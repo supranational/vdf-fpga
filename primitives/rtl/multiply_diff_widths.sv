@@ -118,6 +118,7 @@ module multiply_diff_widths
 
    logic [MUL_OUT_BIT_LEN-1:0] mul_result[LG_NUM_ELEMENTS*NUM_ELEMENTS]; 
 
+   logic [BIT_LEN-1:0]         A_padded[NUM_ELEMENTS+3];
    logic [LG_BIT_LEN-1:0]      A_large[LG_NUM_ELEMENTS];
    logic [LG_BIT_LEN-1:0]      first_word[LG_NUM_ELEMENTS];
    logic [LG_BIT_LEN-1:0]      second_word[LG_NUM_ELEMENTS];
@@ -126,7 +127,29 @@ module multiply_diff_widths
    logic [LG_BIT_LEN-1:0]      or_sec[LG_NUM_ELEMENTS];
    logic [LG_BIT_LEN-1:0]      or_prev[LG_NUM_ELEMENTS];
 
-   logic [OUT_BIT_LEN-1:0]     grid[total_grid_cols()][total_grid_rows()]; 
+   // Add one extra row and col to facilitate the generate loop
+   logic [OUT_BIT_LEN-1:0]     grid[total_grid_cols()+1][total_grid_rows()+1]; 
+
+   logic [OUT_BIT_LEN-1:0]     Cout_staging_0;
+   logic [OUT_BIT_LEN-1:0]     Cout_staging_last;
+   logic [OUT_BIT_LEN-1:0]     Cout_staging[(NUM_ELEMENTS*2)+1];
+   logic [OUT_BIT_LEN-1:0]     S_staging_0;
+   logic [OUT_BIT_LEN-1:0]     S_staging_last;
+   logic [OUT_BIT_LEN-1:0]     S_staging[(NUM_ELEMENTS*2)+1];
+
+   // A_padded will contain the value of A[*] with extra unused elements at
+   // A_padded[0], A_padded[NUM_ELEMENTS], and A_padded[NUM_ELEMENTS+1]. These
+   // will be set to zero so they can be accessed in the generate loop without
+   // going out of bounds on the array ranges.
+   int                         x;
+   always_comb begin
+      A_padded[0]              = '0;
+      for(x = 0; x < NUM_ELEMENTS; x++) begin
+         A_padded[x+1]         = A[x];
+      end
+      A_padded[NUM_ELEMENTS]   = '0;
+      A_padded[NUM_ELEMENTS+1] = '0;
+   end
 
    genvar i, j;
    generate
@@ -134,7 +157,11 @@ module multiply_diff_widths
          localparam int OFFSET = ((i*(LG_WORD_LEN-WORD_LEN))%WORD_LEN);
          localparam int INDEX  = int'((i*LG_WORD_LEN)/WORD_LEN);
 
-         always_comb begin
+         // Explicitly specifying the activation list because Vivado seems
+         // to enter an infinite loop otherwise. Vcs, Verilator, and
+         // synthesis all seem ok with it so it seems like it's just a fluke
+         // in Vivado.
+         always @(A_padded) begin
             first_word[i]  = '0; 
             second_word[i] = '0; 
             third_word[i]  = '0; 
@@ -145,16 +172,16 @@ module multiply_diff_widths
             // May need to add in carry from previous word if exact fit
             if ((i != 0) && (OFFSET == 0)) begin
                or_prev[i][((BIT_LEN-WORD_LEN)-1):0] = 
-                  A[INDEX-1][(BIT_LEN-1):WORD_LEN];
+                 A_padded[INDEX-1+1][(BIT_LEN-1):WORD_LEN];
             end
             
             first_word[i][BIT_LEN-1:0] = 
-               ((A[INDEX] >> OFFSET) & 
+               ((A_padded[INDEX+1] >> OFFSET) & 
                 ((2**(WORD_LEN - OFFSET))-1));
          
             // First word carry bit to add in
             or_first[i][(BIT_LEN-OFFSET)-1:WORD_LEN-OFFSET] = 
-               A[INDEX][(BIT_LEN-1):WORD_LEN];
+               A_padded[INDEX+1][(BIT_LEN-1):WORD_LEN];
 
             // If second word available
             if ((INDEX+1) < NUM_ELEMENTS) begin
@@ -162,13 +189,13 @@ module multiply_diff_widths
                if ((LG_WORD_LEN-WORD_LEN) >= (WORD_LEN-OFFSET)) begin
                   second_word[i][LG_BIT_LEN-1:0] = 
                      {{(LG_BIT_LEN-WORD_LEN){1'b0}}, 
-                      A[INDEX+1][WORD_LEN-1:0]}
+                      A_padded[INDEX+1+1][WORD_LEN-1:0]}
                      << (WORD_LEN - OFFSET);
                end
                // Partial second word
                else begin
                   second_word[i][LG_BIT_LEN-1:0] = 
-                     ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A[INDEX+1]} & 
+                     ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A_padded[INDEX+1+1]} & 
                       ((2**(LG_WORD_LEN-(WORD_LEN-OFFSET)))-1))
                      << (WORD_LEN - OFFSET);
                end
@@ -179,13 +206,13 @@ module multiply_diff_widths
                 ((INDEX+2) < NUM_ELEMENTS)) begin
                // Second word carry bit to add in
                logic [LG_BIT_LEN-1:0]      last_shift;
-               last_shift = ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A[INDEX+1]}
+               last_shift = ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A_padded[INDEX+1+1]}
                              << (WORD_LEN-OFFSET));
                or_sec[i] = last_shift & (2**((WORD_LEN*2) - OFFSET));
 
                // Partial third word
                third_word[i][LG_BIT_LEN-1:0] = 
-                  ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A[INDEX+2]} & 
+                  ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A_padded[INDEX+2+1]} & 
                    ((2**(LG_WORD_LEN-((WORD_LEN*2)-OFFSET)))-1))
                   << ((WORD_LEN*2) - OFFSET);
             end
@@ -193,7 +220,7 @@ module multiply_diff_widths
             else if ((i == (LG_NUM_ELEMENTS-1)) & 
                      ((INDEX+1) < NUM_ELEMENTS)) begin
                logic [LG_BIT_LEN-1:0]      last_shift;
-               last_shift = ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A[INDEX+1]}
+               last_shift = ({{(LG_BIT_LEN-BIT_LEN){1'b0}}, A_padded[INDEX+1+1]}
                              << (WORD_LEN-OFFSET));
                or_sec[i] = last_shift & (2**((WORD_LEN*2) - OFFSET));
             end
@@ -313,6 +340,7 @@ module multiply_diff_widths
                   {{(GRID_PAD + THIRD_Z){1'b0}}, 
                    mul_result[(i*NUM_ELEMENTS)+j][THIRD_U:THIRD_L]};
 
+               // remove if (implied state)
                if ((MUL_OUT_BIT_LEN-(WORD_LEN*2)) > 
                    (WORD_LEN-CURR_GRID_OFFSET)) begin
                   grid[CURR_GRID_INDEX+j+3][CURR_GRID_ROW+3] = 
@@ -327,14 +355,16 @@ module multiply_diff_widths
    // Sum each column using compressor tree
    generate
       // The first and last columns have only one entry, return in S
+      //
+      // Split Cout and S into the zeroeth, middle, and last elements here 
+      // because they are assigned in different always_ff blocks and vcs 
+      // seems unhappy with that. 
       always_ff @(posedge clk) begin
-         Cout[0][OUT_BIT_LEN-1:0]                   <= '0;
-         Cout[total_grid_cols()-1][OUT_BIT_LEN-1:0] <= '0;
+         Cout_staging_0[OUT_BIT_LEN-1:0]    <= '0;
+         Cout_staging_last[OUT_BIT_LEN-1:0] <= '0;
 
-         S[0][OUT_BIT_LEN-1:0]                      <= 
-            grid[0][0][OUT_BIT_LEN-1:0];
-
-         S[total_grid_cols()-1][OUT_BIT_LEN-1:0]    <= 
+         S_staging_0[OUT_BIT_LEN-1:0]       <= grid[0][0][OUT_BIT_LEN-1:0];
+         S_staging_last[OUT_BIT_LEN-1:0]    <= 
             grid[total_grid_cols()-1][total_grid_rows()-1][OUT_BIT_LEN-1:0];
       end
 
@@ -362,15 +392,27 @@ module multiply_diff_widths
                                  )
             compressor_tree_3_to_2 (
                //.terms(grid[i][GRID_INDEX:(GRID_INDEX + CUR_ELEMENTS - 1)]),
-               .terms(grid[i]),
+               .terms(grid[i][0:total_grid_rows()-1]),
                .C(Cout_col),
                .S(S_col)
             );
 
          always_ff @(posedge clk) begin
-            Cout[i][OUT_BIT_LEN-1:0] <= Cout_col[OUT_BIT_LEN-1:0];
-            S[i][OUT_BIT_LEN-1:0]    <= S_col[OUT_BIT_LEN-1:0];
+            Cout_staging[i][OUT_BIT_LEN-1:0] <= Cout_col[OUT_BIT_LEN-1:0];
+            S_staging[i][OUT_BIT_LEN-1:0]    <= S_col[OUT_BIT_LEN-1:0];
          end
       end
    endgenerate
+
+   // Recombine Cout and S into a single array
+   always_comb begin
+      for (int x=1; x<total_grid_cols()-1; x=x+1) begin
+         Cout[x]                   = Cout_staging[x];
+         S[x]                      = S_staging[x];
+      end
+      Cout[0]                      = Cout_staging_0;
+      Cout[total_grid_cols()-1]    = Cout_staging_last;
+      S[0]                         = S_staging_0;
+      S[total_grid_cols()-1]       = S_staging_last;
+   end
 endmodule

@@ -61,6 +61,30 @@ Once you have vnc up run vncconfig to enable copy/paste:
 vncconfig &
 ```
 
+## Vivado
+
+You can run Vivado on either the simple or Ozturk multipliers using the pre-installed tools.
+
+Choose your target:
+```
+# Simple
+cd msu/rtl/vivado_simple
+
+# Ozturk
+cd msu/rtl/vivado_ozturk
+```
+
+Update the target part. The AWS FPGA AMI does not have the basic initial part installed so change the msu.tcl file to use the vu9p target part.
+```
+sed 's/xc7s100fgga676-2/xcvu9p-flga2104-1-e/g' msu.tcl > msu2.tcl
+mv msu2.tcl msu.tcl
+```
+
+Launch Vivado:
+```
+./run_vivado.sh
+```
+
 ## Hardware Emulation
 
 To build and run a test in hardware emulation:
