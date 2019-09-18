@@ -221,11 +221,18 @@ if {[string equal [get_filesets -quiet constrs_1] ""]} {
 # Set 'constrs_1' fileset object
 set obj [get_filesets constrs_1]
 
-# Empty (no sources present)
+# Add/Import constrs file and set constrs file properties
+set file "[file normalize "$origin_dir/msu.srcs/constrs_1/new/user.xdc"]"
+set file_added [add_files -norecurse -fileset $obj [list $file]]
+set file "new/user.xdc"
+set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+set_property -name "file_type" -value "XDC" -objects $file_obj
 
 # Set 'constrs_1' fileset properties
 set obj [get_filesets constrs_1]
+set_property -name "target_constrs_file" -value "[get_files *new/user.xdc]" -objects $obj
 set_property -name "target_part" -value "xc7s100fgga676-2" -objects $obj
+set_property -name "target_ucf" -value "[get_files *new/user.xdc]" -objects $obj
 
 # Create 'sim_1' fileset (if not found)
 if {[string equal [get_filesets -quiet sim_1] ""]} {

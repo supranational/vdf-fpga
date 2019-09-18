@@ -64,7 +64,7 @@ h = x
 print(h)
 ```
 
-## Interface
+## Basic Interface
 
 The competition uses the AWS F1/Xilinx SDAccel build infrastructure described in [aws_f1](docs/aws_f1.md) to measure performance and functional correctness. If you conform to the following interface your design should function correctly in F1 in the provided software/control infrastructure.
 
@@ -108,7 +108,32 @@ See [modular_square/rtl/modular_square_simple.sv](modular_square/rtl/modular_squ
 
 See [modular_square/rtl/modular_square_8_cycles.sv](modular_square/rtl/modular_square_8_cycles.sv). This is an implementation of the multiplier developed by Erdinc Ozturk of Sabanci University and described in detail at [MIT VDF Day 2019](https://dci.mit.edu/video-gallery/2019/5/29/survey-of-hardware-multiplier-techniques-new-innovations-in-low-latency-multipliers-e-ozturk) and in [Modular Multiplication Algorithm Suitable For Low-Latency Circuit Implementations](https://eprint.iacr.org/2019/826). 
 
-There are several potential paths for alternative designs and optimizations noted below. 
+
+**Ozturk Interface**
+
+The Ozturk multiplier takes advantage of redundant polynomial representation to reduce latency for squaring and reduction. Similar to Montgomery form it is advantageous to stay in redundant representation until the target number of squarings is complete. As a result the Ozturk interface is modified to return twice as many bits. 
+
+In addition there is a wrapper module that unpacks/packs the bits of sq_in/sq_out between vector and polynomial form.
+
+```
+module modular_square_wrapper
+   #(
+     parameter int MOD_LEN     = 1024,
+     parameter int SQ_OUT_BITS = 2048
+    )
+   (
+    input logic                     clk,
+    input logic                     reset,
+    input logic                     start,
+    input logic [MOD_LEN-1:0]       sq_in,
+    output logic [SQ_OUT_BITS-1:0]  sq_out,
+    output logic                    valid
+   );
+   
+   // This module instantiates modular_square_8_cycles (Ozturk multiplier)
+```
+
+Each 17-bit coefficient is returned to the driver as 32 bits (one AXI transaction). The final reduction is completed in software inside the timer in msu/sw/Squarer.hpp unpack(). 
 
 ## Step 1 - Develop your multiplier
 
@@ -143,7 +168,6 @@ There are several potential paths for alternative designs and optimizations note
         * Click Run Simulation->Run Behavioral Simulation
         * The test is self checking and should print "SUCCESS". 
     * The simulation prints cycles per squaring statistics. This, along with synthesis timing results, provides an estimate of latency per squaring.
-    * You can also use [verilator](docs/verilator.md) if you prefer by running 'cd msu/rtl; make'. No license required.
 1. Run out-of-context synthesis + place and route to understand and tune performance. A pblock is set up to mimic the AWS F1 Shell exclusion zone. In our exprience these results are pretty close to what you will get on F1 and and provide an easier/faster/more intuitive interface for improving the design.
 1. Once you have the 30 day trial license you can enable the vu9p part, which is the target of the contest.
     * Help -> Add Design Tools or Devices, sign in
