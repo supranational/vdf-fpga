@@ -1,5 +1,27 @@
 # VDF FPGA Competition Baseline Model
 
+# Round 2 is now started!
+
+Round 1 of the competition closed at the end of September. You can see full results and submissions in the [Round 1 GitHub repo]<https://github.com/supranational/vdf-fpga-round1-results>. 
+
+Round 2 starts as of October 15. See the [Round 2 Wiki]<https://supranational.atlassian.net/wiki/spaces/VA/pages/48758785/FPGA+Competition+Round+2> for parameters for round 2 as well as some takeaways and advice based on round 1. 
+
+For round 2 the infrastructure has not changed so documentation and instructions below are generally still valid. Keep in mind that the following key inputs have changed from round 1:
+
+**Baseline latency**<br>
+28.6 ns/sq
+
+**Prize**<br>
+$5000 / ns improvement over the baseline
+
+**Repeated squarings for evaluation**<br>
+t=2^33 (~4 minutes)
+
+**Precommit of x to be used for evaluation (sha256)**<br>
+a09374efbe0b2dba7a779fb1c7768479d004beff1bf05030dbd03d54c4f3fdcf
+
+# Round 1 archival material
+
 This repository contains the modular squaring multiplier baseline design for the VDF (Verifiable Delay Function) low latency multiplier FPGA competition. For more information about the research behind VDFs see <https://vdfresearch.org/>.
 
 The goal of the competition is to create the fastest (lowest latency) 1024 bit modular squaring circuit possible targeting the AWS F1 FPGA platform. Up to $100k in prizes is available across two rounds of the competition. For additional detail see [FPGA Contest Wiki](https://supranational.atlassian.net/wiki/spaces/VA/pages/36569208/FPGA+Contest) on the [VDF Alliance](https://supranational.atlassian.net/wiki/spaces/VA/overview) page.
